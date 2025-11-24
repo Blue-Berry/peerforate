@@ -1,0 +1,21 @@
+(library
+ (name wglib)
+ (libraries ctypes ctypes-foreign base ipaddr ppx_jane)
+ (preprocess
+  (pps ppx_jane))
+ (extra_objects wireguard)
+ (foreign_archives wireguard))
+
+(rule
+ (deps
+  (source_tree libwireguard))
+ (targets libwireguard.a dllwireguard.so wireguard.o)
+ (action
+  (no-infer
+   (progn
+    (chdir
+     libwireguard
+     (run make))
+    (copy libwireguard/wireguard.o wireguard.o)
+    (copy libwireguard/wireguard.a libwireguard.a)
+    (copy libwireguard/wireguard.so dllwireguard.so)))))

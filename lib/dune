@@ -1,0 +1,12 @@
+(library
+ (name wg_nat)
+ (libraries
+  cstruct
+  cstruct-sexp
+  core
+  core_unix
+  wglib
+  mirage-crypto-ec
+  mirage-crypto-rng.unix)
+ (preprocess
+  (pps ppx_cstruct)))

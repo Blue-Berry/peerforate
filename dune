@@ -1,0 +1,12 @@
+(env
+ (dev
+  (flags (:standard)))
+ (release
+  (ocamlopt_flags
+   (:standard -O3)))
+ (dcmm
+  (ocamlopt_flags
+   (:standard -O3 -S -dcmm -dump-into-file -g)))
+ (dlambda
+  (ocamlopt_flags
+   (:standard -O3 -S -dlambda -dump-into-file -g))))

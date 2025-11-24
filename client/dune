@@ -1,0 +1,15 @@
+(executable
+ (public_name peerforate-client)
+ (name main)
+ (modules main)
+ (libraries wg_nat core core_unix wglib bpf_filter)
+ (preprocess
+  (pps ppx_cstruct)))
+
+(library
+ (name bpf_filter)
+ (modules bpf_filter)
+ (foreign_stubs
+  (language c)
+  (names bpf_filter))
+ (libraries ctypes ctypes.foreign core_unix))
