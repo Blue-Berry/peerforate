@@ -1,5 +1,6 @@
-(executable
- (name server)
+(library
+ (name dnslib)
+ (modules client dnslib server utils)
  (libraries
   core
   eio
@@ -15,3 +16,8 @@
   mirage-crypto-rng.unix
   ipaddr
   wg_nat))
+
+(executable
+ (name server_example)
+ (modules server_example)
+ (libraries dnslib))
