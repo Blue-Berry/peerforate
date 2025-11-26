@@ -58,3 +58,97 @@ let get_key ~sw ~net ~dst ~clock =
 ;;
 
 (* TODO: setup search in resolv.conf *)
+
+module S = struct
+  type +'a io = 'a
+  type stack = Eio_unix.Net.t
+  type io_addr = Ipaddr.t * int
+
+  type t =
+    { net : stack
+    ; nameservers : Dns.proto * io_addr list
+    ; timeout_ns : int64 [@warning "-69"]
+    ; sw : Eio.Switch.t option ref
+    }
+
+  type context =
+    { socket : [ `Generic ] Eio.Net.datagram_socket_ty Eio.Resource.t
+    ; addr : Eio.Net.Sockaddr.datagram
+    }
+
+  let create ?(nameservers = `Udp, []) ~timeout stack =
+    { net = stack; nameservers; timeout_ns = timeout; sw = ref None }
+  ;;
+
+  (* Helper to set the switch - call this from within an Eio context *)
+  let set_switch t sw =
+    t.sw := Some sw;
+    t
+  [@@warning "-32"]
+  ;;
+
+  let nameservers t = t.nameservers
+  let rng n = Mirage_crypto_rng.generate n
+  let clock () = Mtime_clock.now () |> Mtime.to_uint64_ns
+
+  let connect t =
+    let proto, addrs = t.nameservers in
+    match !(t.sw), addrs with
+    | None, _ ->
+      Error
+        (`Msg "No switch set. Call set_switch within an Eio context before using connect.")
+    | _, [] -> Error (`Msg "No nameservers configured")
+    | Some sw, (ip, port) :: _ ->
+      (try
+         (* Destination address for the DNS server *)
+         let dst_addr =
+           match ip with
+           | Ipaddr.V4 ipv4 ->
+             let octets = Ipaddr.V4.to_octets ipv4 in
+             `Udp (Eio.Net.Ipaddr.of_raw octets, port)
+           | Ipaddr.V6 ipv6 ->
+             let octets = Ipaddr.V6.to_octets ipv6 in
+             `Udp (Eio.Net.Ipaddr.of_raw octets, port)
+         in
+         (* Create socket bound to ephemeral port, not to the destination *)
+         let bind_addr =
+           match ip with
+           | Ipaddr.V4 _ ->
+             `Udp (Eio.Net.Ipaddr.V4.any, 0) (* Bind to 0.0.0.0:0 (ephemeral port) *)
+           | Ipaddr.V6 _ -> `Udp (Eio.Net.Ipaddr.V6.any, 0)
+           (* Bind to [::]:0 (ephemeral port) *)
+         in
+         let socket = Eio.Net.datagram_socket ~sw t.net bind_addr in
+         Ok
+           ( proto
+           , { socket :> [ `Generic ] Eio.Net.datagram_socket_ty Eio.Resource.t
+             ; addr = dst_addr
+             } )
+       with
+       | e -> Error (`Msg (Printexc.to_string e)))
+  ;;
+
+  let send_recv ctx msg =
+    try
+      let query_buf = Cstruct.of_string msg in
+      Eio.Net.send ctx.socket ~dst:ctx.addr [ query_buf ];
+      let resp_buf = Cstruct.create 512 in
+      let _addr, recv_len = Eio.Net.recv ctx.socket resp_buf in
+      Ok (Cstruct.to_string (Cstruct.sub resp_buf 0 recv_len))
+    with
+    | e -> Error (`Msg (Printexc.to_string e))
+  ;;
+
+  let close _ctx = ()
+  let bind x f = f x
+  let lift x = x
+end
+
+module C = Dns_client.Make (S)
+
+(* Helper function to create a DNS client with proper types *)
+let create_client ?nameservers ~timeout ~sw (net : Eio_unix.Net.t) =
+  let client = C.create ?nameservers ~timeout net in
+  let _transport = C.transport client |> fun t -> S.set_switch t sw in
+  client
+;;
