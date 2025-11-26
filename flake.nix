@@ -54,7 +54,6 @@
               utop
               ocamlformat
               ocaml-lsp
-              # patch ocaml-lsp so that inlay hints dont hide ghost values
             ];
           };
         };

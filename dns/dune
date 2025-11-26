@@ -1,6 +1,7 @@
 (executable
  (name server)
  (libraries
+  core
   eio
   eio_main
   dns
@@ -12,4 +13,5 @@
   ptime.clock.os
   mirage-crypto-rng
   mirage-crypto-rng.unix
-  ipaddr))
+  ipaddr
+  wg_nat))
