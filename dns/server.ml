@@ -80,14 +80,7 @@ let forward_query ~net ~clock query_buf =
   Eio.Switch.run
   @@ fun sw ->
   let upstream = `Udp Config.(upstream_ip, upstream_port) in
-  let sock = Eio.Net.datagram_socket ~sw net `UdpV4 in
-  Eio.Net.send sock ~dst:upstream [ query_buf ];
-  let resp_buf = Cstruct.create 4096 in
-  match Eio.Time.with_timeout clock 2.0 (fun () -> Ok (Eio.Net.recv sock resp_buf)) with
-  | Ok (_addr, len) -> Some (Cstruct.sub resp_buf 0 len)
-  | Error `Timeout ->
-    Logs.warn (fun m -> m "Upstream timeout");
-    None
+  Utils.query ~sw ~net ~dst:upstream ~query_buf ~clock
 ;;
 
 let is_local_zone name =

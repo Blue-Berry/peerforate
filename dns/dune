@@ -7,6 +7,8 @@
   eio_main
   dns
   dns-server
+  dns-resolver
+  dns-client
   domain-name
   logs
   cstruct
@@ -20,4 +22,9 @@
 (executable
  (name server_example)
  (modules server_example)
+ (libraries dnslib))
+
+(executable
+ (name client_example)
+ (modules client_example)
  (libraries dnslib))
