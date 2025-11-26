@@ -1,90 +1,39 @@
 (* DNS Client Library using Dns_client *)
-
-(* TODO: change to functor? https://mirage.github.io/ocaml-dns/dns-client/Dns_client/module-type-S/index.html *)
-let name s = Domain_name.(host_exn (of_string_exn s))
-
-(* Query for TXT records using Dns_client.Pure *)
-let query_txt ~sw ~net ~dst ~clock domain_name =
-  let open Dns in
-  let domain = name domain_name in
-  (* Use Dns_client.Pure.make_query to create a DNS query *)
-  let rng = Mirage_crypto_rng.generate ?g:None in
-  let query_str, _query_state =
-    Dns_client.Pure.make_query rng `Udp `None domain Rr_map.Txt
-  in
-  (* Send query and receive response *)
-  let query_buf = Cstruct.of_string query_str in
-  match Utils.query ~sw ~net ~dst ~query_buf ~clock with
-  | None -> Error `Query_failed
-  | Some resp_buf ->
-    (* Decode response *)
-    (match Packet.decode (Cstruct.to_string resp_buf) with
-     | Error e -> Error (`Decode_error e)
-     | Ok response ->
-       (* Extract TXT records from answer *)
-       (match response.Packet.data with
-        | `Answer (answer, _) ->
-          let raw_domain = Domain_name.raw domain in
-          (match Domain_name.Map.find_opt raw_domain answer with
-           | Some rr_map ->
-             (* Extract TXT records from the Rr_map *)
-             (match Dns.Rr_map.find Rr_map.Txt rr_map with
-              | Some (ttl, txt_set) ->
-                let txt_records = Rr_map.Txt_set.elements txt_set in
-                Ok (ttl, txt_records)
-              | None -> Error `Wrong_record_type)
-           | None -> Error `No_answer)
-        | _ -> Error `Not_an_answer))
-;;
-
-(* Higher-level function to get TXT records as strings *)
-let get_txt_records ~sw ~net ~dst ~clock domain_name =
-  match query_txt ~sw ~net ~dst ~clock domain_name with
-  | Ok (ttl, records) ->
-    Logs.info (fun m ->
-      m "TXT records for %s (TTL=%ld): %d records" domain_name ttl (List.length records));
-    Ok records
-  | Error e ->
-    Logs.warn (fun m -> m "Failed to query TXT for %s" domain_name);
-    Error e
-;;
-
-(* Example: Get encryption key from DNS TXT record *)
-let get_key ~sw ~net ~dst ~clock =
-  match get_txt_records ~sw ~net ~dst ~clock "key.vpn.local" with
-  | Ok (key :: _) -> Some key
-  | Ok [] -> None
-  | Error _ -> None
-;;
-
 (* TODO: setup search in resolv.conf *)
 
-module S = struct
+module Client = struct
   type +'a io = 'a
-  type stack = Eio_unix.Net.t
+
+  type stack =
+    { net : Eio_unix.Net.t
+    ; sw : Eio.Switch.t
+    ; clock : float Eio.Time.clock_ty Eio.Resource.t
+    }
+
   type io_addr = Ipaddr.t * int
 
   type t =
-    { net : stack
+    { net : Eio_unix.Net.t
     ; nameservers : Dns.proto * io_addr list
-    ; timeout_ns : int64 [@warning "-69"]
-    ; sw : Eio.Switch.t option ref
+    ; timeout_ns : int64
+    ; sw : Eio.Switch.t
+    ; clock : float Eio.Time.clock_ty Eio.Resource.t
     }
 
   type context =
     { socket : [ `Generic ] Eio.Net.datagram_socket_ty Eio.Resource.t
     ; addr : Eio.Net.Sockaddr.datagram
+    ; timeout_s : float
+    ; clock : float Eio.Time.clock_ty Eio.Resource.t
     }
 
-  let create ?(nameservers = `Udp, []) ~timeout stack =
-    { net = stack; nameservers; timeout_ns = timeout; sw = ref None }
-  ;;
-
-  (* Helper to set the switch - call this from within an Eio context *)
-  let set_switch t sw =
-    t.sw := Some sw;
-    t
-  [@@warning "-32"]
+  let create ?(nameservers = `Udp, []) ~timeout (stack : stack) =
+    { net = stack.net
+    ; nameservers
+    ; timeout_ns = timeout
+    ; sw = stack.sw
+    ; clock = stack.clock
+    }
   ;;
 
   let nameservers t = t.nameservers
@@ -93,12 +42,9 @@ module S = struct
 
   let connect t =
     let proto, addrs = t.nameservers in
-    match !(t.sw), addrs with
-    | None, _ ->
-      Error
-        (`Msg "No switch set. Call set_switch within an Eio context before using connect.")
-    | _, [] -> Error (`Msg "No nameservers configured")
-    | Some sw, (ip, port) :: _ ->
+    match addrs with
+    | [] -> Error (`Msg "No nameservers configured")
+    | (ip, port) :: _ ->
       (try
          (* Destination address for the DNS server *)
          let dst_addr =
@@ -118,11 +64,14 @@ module S = struct
            | Ipaddr.V6 _ -> `Udp (Eio.Net.Ipaddr.V6.any, 0)
            (* Bind to [::]:0 (ephemeral port) *)
          in
-         let socket = Eio.Net.datagram_socket ~sw t.net bind_addr in
+         let socket = Eio.Net.datagram_socket ~sw:t.sw t.net bind_addr in
          Ok
            ( proto
            , { socket :> [ `Generic ] Eio.Net.datagram_socket_ty Eio.Resource.t
              ; addr = dst_addr
+             ; timeout_s =
+                 Core.(Float.of_int64 t.timeout_ns /. (Int.pow 10 9 |> Int.to_float))
+             ; clock = t.clock
              } )
        with
        | e -> Error (`Msg (Printexc.to_string e)))
@@ -133,8 +82,14 @@ module S = struct
       let query_buf = Cstruct.of_string msg in
       Eio.Net.send ctx.socket ~dst:ctx.addr [ query_buf ];
       let resp_buf = Cstruct.create 512 in
-      let _addr, recv_len = Eio.Net.recv ctx.socket resp_buf in
-      Ok (Cstruct.to_string (Cstruct.sub resp_buf 0 recv_len))
+      match
+        Eio.Time.with_timeout ctx.clock ctx.timeout_s (fun () ->
+          Ok (Eio.Net.recv ctx.socket resp_buf))
+      with
+      | Error `Timeout ->
+        Logs.warn (fun m -> m "Upstream timeout");
+        Error (`Msg "Upstream timeout")
+      | Ok (_addr, recv_len) -> Ok (Cstruct.to_string (Cstruct.sub resp_buf 0 recv_len))
     with
     | e -> Error (`Msg (Printexc.to_string e))
   ;;
@@ -144,11 +99,20 @@ module S = struct
   let lift x = x
 end
 
-module C = Dns_client.Make (S)
+module C = Dns_client.Make (Client)
 
 (* Helper function to create a DNS client with proper types *)
-let create_client ?nameservers ~timeout ~sw (net : Eio_unix.Net.t) =
-  let client = C.create ?nameservers ~timeout net in
-  let _transport = C.transport client |> fun t -> S.set_switch t sw in
+let create_client
+      ?nameservers
+      ~(clock : float Eio.Time.clock_ty Eio.Resource.t)
+      ~timeout
+      ~sw
+      ~(net : Eio_unix.Net.t)
+      ()
+  =
+  let client = C.create ?nameservers ~timeout { net; sw; clock } in
   client
 ;;
+
+(* TODO: *)
+(* include C *)

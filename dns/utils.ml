@@ -7,6 +7,7 @@ let ipaddr_to_eio (ip : Ipaddr.t) : Eio.Net.Ipaddr.v4v6 =
   Eio.Net.Ipaddr.of_raw (Ipaddr.to_octets ip)
 ;;
 
+(* TODO: move back *)
 let query ~sw ~net ~dst ~query_buf ~clock =
   let sock = Eio.Net.datagram_socket ~sw net `UdpV4 in
   Eio.Net.send sock ~dst [ query_buf ];
@@ -17,3 +18,5 @@ let query ~sw ~net ~dst ~query_buf ~clock =
     Logs.warn (fun m -> m "Upstream timeout");
     None
 ;;
+
+let name s = Domain_name.(host_exn (of_string_exn s))

@@ -1,6 +1,8 @@
 (* Example using Dns_client.Make functor *)
 open Dnslib.Client
 
+let name = Dnslib.Utils.name
+
 let () =
   Logs.set_level (Some Logs.Info);
   Logs.set_reporter (Logs.format_reporter ());
@@ -9,11 +11,12 @@ let () =
   (* Initialize random number generator *)
   Mirage_crypto_rng_unix.use_default ();
   let net : Eio_unix.Net.t = (Eio.Stdenv.net env :> Eio_unix.Net.t) in
+  let clock = Eio.Stdenv.clock env in
   Eio.Switch.run
   @@ fun sw ->
   (* Create DNS client using the helper function *)
   let nameservers = `Udp, [ Ipaddr.of_string_exn "127.0.0.1", 5354 ] in
-  let client = create_client ~nameservers ~timeout:5_000_000_000L ~sw net in
+  let client = create_client ~nameservers ~timeout:5_000_000_000L ~sw ~net ~clock () in
   Logs.info (fun m -> m "DNS client created with nameservers: localhost:5354");
   (* Example 1: Query TXT records for key.vpn.local *)
   Logs.info (fun m -> m "Querying TXT records for key.vpn.local...");
