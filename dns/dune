@@ -1,0 +1,3 @@
+(library
+ (name dns_util)
+ (libraries eio dns-mirage dns dns-server))

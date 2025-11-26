@@ -84,6 +84,11 @@
                 # libbpf
                 mirage-crypto-ec
                 mirage-crypto-rng
+                dns
+                dns-server
+                dns-resolver
+                dns-stub
+                eio
               ];
             };
 
