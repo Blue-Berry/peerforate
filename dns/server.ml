@@ -1,7 +1,7 @@
 (* DNS Server using Eio - multicore ready *)
 
 (* Configuration *)
-let listen_port = 5353
+let listen_port = 5354
 let upstream_ip = Eio.Net.Ipaddr.of_raw "\008\008\008\008" (* 8.8.8.8 *)
 let upstream_port = 53
 
@@ -9,24 +9,38 @@ let upstream_port = 53
 let name s = Domain_name.(host_exn (of_string_exn s))
 let raw s = Domain_name.(of_string_exn s)
 
-(* Shared DNS records with mutex protection *)
-module Records = struct
+(* Convert Eio IP address to Ipaddr *)
+let eio_to_ipaddr (ip : Eio.Net.Ipaddr.v4v6) : Ipaddr.t =
+  let str = Format.asprintf "%a" Eio.Net.Ipaddr.pp ip in
+  Ipaddr.of_string_exn str
+;;
+
+(* DNS Server state with mutex protection *)
+module Server_state = struct
   type t =
-    { mutable trie : Dns_trie.t
+    { mutable server : Dns_server.Primary.s
     ; mutex : Eio.Mutex.t
     }
 
-  let create trie = { trie; mutex = Eio.Mutex.create () }
-
-  let lookup t name qtype =
-    Eio.Mutex.use_ro t.mutex
-    @@ fun () ->
-    match Dns_trie.lookup name qtype t.trie with
-    | Ok rr -> Some rr
-    | Error _ -> None
+  let create trie =
+    let rng = Mirage_crypto_rng.generate ?g:None in
+    let server = Dns_server.Primary.create ~rng trie in
+    { server; mutex = Eio.Mutex.create () }
   ;;
 
-  let update t f = Eio.Mutex.use_rw ~protect:true t.mutex @@ fun () -> t.trie <- f t.trie
+  let handle_request t ~now ~ts ~proto ~src ~src_port buf =
+    Eio.Mutex.use_rw ~protect:true t.mutex
+    @@ fun () ->
+    let new_server, replies, _notifications, _notify, _key =
+      Dns_server.Primary.handle_buf t.server now ts proto src src_port buf
+    in
+    t.server <- new_server;
+    replies
+  ;;
+
+  let update t f =
+    Eio.Mutex.use_rw ~protect:true t.mutex @@ fun () -> t.server <- f t.server
+  ;;
 end
 
 (* Build initial local zone *)
@@ -76,59 +90,35 @@ let forward_query ~net ~clock query_buf =
   @@ fun sw ->
   let upstream = `Udp (upstream_ip, upstream_port) in
   let sock = Eio.Net.datagram_socket ~sw net `UdpV4 in
-  Eio.Net.send sock upstream [ query_buf ];
+  Eio.Net.send sock ~dst:upstream [ query_buf ];
   let resp_buf = Cstruct.create 4096 in
-  match Eio.Time.with_timeout clock 2.0 (fun () -> Eio.Net.recv sock resp_buf) with
+  match Eio.Time.with_timeout clock 2.0 (fun () -> Ok (Eio.Net.recv sock resp_buf)) with
   | Ok (_addr, len) -> Some (Cstruct.sub resp_buf 0 len)
   | Error `Timeout ->
     Logs.warn (fun m -> m "Upstream timeout");
     None
 ;;
 
-(* Build a DNS response packet *)
-let make_response (query : Dns.Packet.t) answer =
-  let open Dns.Packet in
-  let header = { query.header with Dns.Packet.Header.query = false } in
-  create header (`Answer (answer, Dns.Name_rr_map.empty))
-;;
-
 (* Handle a single DNS query *)
-let handle_query ~net ~clock records query_buf =
-  let open Dns in
-  match Packet.decode query_buf with
-  | Error e ->
-    Logs.warn (fun m -> m "Decode error: %a" Packet.pp_err e);
-    None
-  | Ok query ->
-    (match query.Packet.data with
-     | `Query ->
-       (match query.Packet.questions with
-        | [ { Question.name; q_type } ] ->
-          Logs.info (fun m ->
-            m "Query: %a %a" Domain_name.pp name Packet.Question.pp_qtype q_type);
-          (* Try local first *)
-          let local_answer =
-            match q_type with
-            | `K (Rr_map.K k) -> Records.lookup records (Domain_name.raw name) k
-            | `Any | `Axfr _ | `Ixfr -> None
-          in
-          (match local_answer with
-           | Some rr ->
-             Logs.info (fun m -> m "-> Local");
-             let answer = Domain_name.Map.singleton (Domain_name.raw name) rr in
-             let pkt = make_response query answer in
-             (match Packet.encode `Udp pkt with
-              | Ok (cs, _) -> Some cs
-              | Error _ -> None)
-           | None ->
-             Logs.info (fun m -> m "-> Forward");
-             forward_query ~net ~clock query_buf)
-        | _ -> None)
-     | _ -> None)
+let handle_query ~net ~clock ~now server_state src src_port query_buf =
+  let query_str = Cstruct.to_string query_buf in
+  let ts = Int64.of_float (Ptime.Span.to_float_s (Ptime.to_span now)) in
+  (* Try local DNS server first *)
+  let replies =
+    Server_state.handle_request server_state ~now ~ts ~proto:`Udp ~src ~src_port query_str
+  in
+  match replies with
+  | reply :: _ ->
+    Logs.info (fun m -> m "-> Local");
+    Some (Cstruct.of_string reply)
+  | [] ->
+    (* No local answer, forward to upstream *)
+    Logs.info (fun m -> m "-> Forward");
+    forward_query ~net ~clock query_buf
 ;;
 
 (* DNS server - listens for queries and spawns fibers to handle them *)
-let dns_server ~net ~clock records =
+let dns_server ~net ~clock server_state =
   Eio.Switch.run
   @@ fun sw ->
   let listening_addr = `Udp (Eio.Net.Ipaddr.V4.any, listen_port) in
@@ -138,16 +128,23 @@ let dns_server ~net ~clock records =
   while true do
     let client_addr, len = Eio.Net.recv sock buf in
     let query_buf = Cstruct.sub buf 0 len in
+    let now = Ptime.v (Ptime_clock.now_d_ps ()) in
+    let eio_ip, src_port =
+      match client_addr with
+      | `Udp (ip, port) -> ip, port
+      | _ -> Eio.Net.Ipaddr.V4.any, 0
+    in
+    let src = eio_to_ipaddr eio_ip in
     (* Spawn a fiber to handle this query concurrently *)
     Eio.Fiber.fork ~sw (fun () ->
-      match handle_query ~net ~clock records query_buf with
-      | Some resp -> Eio.Net.send sock client_addr [ resp ]
+      match handle_query ~net ~clock ~now server_state src src_port query_buf with
+      | Some resp -> Eio.Net.send sock ~dst:client_addr [ resp ]
       | None -> ())
   done
 ;;
 
 (* Example background task: periodically update records *)
-let record_populator ~clock records =
+let record_populator ~clock server_state =
   let counter = ref 0 in
   while true do
     Eio.Time.sleep clock 10.0;
@@ -158,32 +155,34 @@ let record_populator ~clock records =
       Ipaddr.V4.of_string_exn (Printf.sprintf "10.0.0.%d" (1 + (!counter mod 254)))
     in
     let a_record = 60l, Ipaddr.V4.Set.singleton ip in
-    Records.update records (fun trie ->
-      Dns_trie.insert dynamic_name Dns.Rr_map.A a_record trie);
+    Server_state.update server_state (fun server ->
+      let trie = Dns_server.Primary.data server in
+      let new_trie = Dns_trie.insert dynamic_name Dns.Rr_map.A a_record trie in
+      let rng = Mirage_crypto_rng.generate ?g:None in
+      Dns_server.Primary.create ~rng new_trie);
     Logs.info (fun m ->
       m "Added record: %a -> %a" Domain_name.pp dynamic_name Ipaddr.V4.pp ip)
   done
 ;;
 
 (* Example: CPU-bound work on a separate domain *)
-let run_on_domain ~domain_mgr f = Eio.Domain_manager.run domain_mgr f
+let _run_on_domain ~domain_mgr f = Eio.Domain_manager.run domain_mgr f
 
 let () =
-  Fmt_tty.setup_std_outputs ();
   Logs.set_level (Some Logs.Info);
-  Logs.set_reporter (Logs_fmt.reporter ());
+  Logs.set_reporter (Logs.format_reporter ());
   Eio_main.run
   @@ fun env ->
-  Mirage_crypto_rng_eio.run (module Mirage_crypto_rng.Fortuna) env
-  @@ fun () ->
+  (* Initialize random number generator *)
+  Mirage_crypto_rng_unix.use_default ();
   let net = Eio.Stdenv.net env in
   let clock = Eio.Stdenv.clock env in
   let _domain_mgr = Eio.Stdenv.domain_mgr env in
-  (* Create shared records *)
-  let records = Records.create (build_initial_trie ()) in
+  (* Create DNS server state *)
+  let server_state = Server_state.create (build_initial_trie ()) in
   Logs.info (fun m -> m "Loaded initial DNS records");
   (* Run DNS server and background populator concurrently *)
   Eio.Fiber.both
-    (fun () -> dns_server ~net ~clock records)
-    (fun () -> record_populator ~clock records)
+    (fun () -> dns_server ~net ~clock server_state)
+    (fun () -> record_populator ~clock server_state)
 ;;

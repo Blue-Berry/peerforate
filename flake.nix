@@ -35,7 +35,7 @@
           inherit (dockerTools) buildImage;
           # Use specific version of ocamlPackages
           # inherit (pkgs) ocamlPackages;
-          ocamlPackages = pkgs.ocaml-ng.ocamlPackages_5_3;
+          ocamlPackages = pkgs.ocaml-ng.ocamlPackages_5_4;
           inherit (ocamlPackages) buildDunePackage;
           name = "peerforate";
           version = "0.0.1";
@@ -89,6 +89,10 @@
                 dns-resolver
                 dns-stub
                 eio
+                eio_main
+                logs
+                domain-name
+                ptime
               ];
             };
 
