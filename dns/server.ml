@@ -112,13 +112,18 @@ let handle_query ~net ~clock ~now server_state src src_port query_buf =
        let name, _q_type = query.Packet.question in
        let domain_str = Domain_name.to_string name in
        (* Check if this is for our local zone *)
-       if String.ends_with ~suffix:".vpn.local" domain_str
-          || domain_str = "vpn.local"
+       if String.ends_with ~suffix:".vpn.local" domain_str || domain_str = "vpn.local"
        then (
          (* Query is for our zone, use local DNS server *)
          let ts = Int64.of_float (Ptime.Span.to_float_s (Ptime.to_span now)) in
          let replies =
-           Server_state.handle_request server_state ~now ~ts ~proto:`Udp ~src ~src_port
+           Server_state.handle_request
+             server_state
+             ~now
+             ~ts
+             ~proto:`Udp
+             ~src
+             ~src_port
              query_str
          in
          match replies with

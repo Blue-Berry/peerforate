@@ -1,3 +1,15 @@
 (executable
  (name server)
- (libraries eio eio_main dns dns-server domain-name logs cstruct ptime ptime.clock.os mirage-crypto-rng mirage-crypto-rng.unix ipaddr))
+ (libraries
+  eio
+  eio_main
+  dns
+  dns-server
+  domain-name
+  logs
+  cstruct
+  ptime
+  ptime.clock.os
+  mirage-crypto-rng
+  mirage-crypto-rng.unix
+  ipaddr))
