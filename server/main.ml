@@ -4,17 +4,18 @@ module R = Wg_nat.Reply.Packet
 module K = Wglib.Wgapi.Key
 
 (* TODO: *)
+(*   - Prevent replay attacks *)
+(*   - Switch to ipv6 *)
+(*   - Track Clients: public key, timestamp, address *)
+(*   - timeout for clients, lazy cleanup + periodic cleanup *)
+(*   - Authenticate client before tracking *)
+(*   - Prevent DoS *)
 (*   - Refactor *)
 (*   - Add tests *)
 (*   - Create DNS server *)
 (*   - DNS server forwarding? *)
 (*   - Create DNS client *)
 (*   - Publish public key to DNS TXT record *)
-(*   - Track Clients: public key, timestamp, address *)
-(*   - timeout for clients, lazy cleanup + periodic cleanup *)
-(*   - Prevent replay attacks *)
-(*   - Prevent DoS *)
-(*   - Authenticate client before tracking *)
 
 let int_to_hex i = Printf.sprintf "%02x" i
 

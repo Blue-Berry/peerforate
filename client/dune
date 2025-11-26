@@ -11,5 +11,6 @@
  (modules bpf_filter)
  (foreign_stubs
   (language c)
-  (names bpf_filter))
+  (names bpf_filter)
+  (flags -Wno-unused-variable))
  (libraries ctypes ctypes.foreign core_unix))
