@@ -46,11 +46,11 @@ end
 (* Build initial local zone *)
 let build_initial_trie () =
   let open Dns in
-  let zone = name "example.local" in
+  let zone = name "vpn.local" in
   let soa =
     Soa.
-      { nameserver = raw "ns1.example.local"
-      ; hostmaster = raw "admin.example.local"
+      { nameserver = raw "ns1.vpn.local"
+      ; hostmaster = raw "admin.vpn.local"
       ; serial = 2024010101l
       ; refresh = 86400l
       ; retry = 7200l
@@ -58,7 +58,7 @@ let build_initial_trie () =
       ; minimum = 3600l
       }
   in
-  let ns_set = Domain_name.Host_set.(empty |> add (name "ns1.example.local")) in
+  let ns_set = Domain_name.Host_set.(empty |> add (name "ns1.vpn.local")) in
   let ns1_a = 300l, Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "192.168.1.1") in
   let www_a = 300l, Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "192.168.1.10") in
   let api_a = 300l, Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "192.168.1.20") in
@@ -69,7 +69,7 @@ let build_initial_trie () =
   let mx =
     ( 300l
     , Rr_map.Mx_set.singleton
-        { Mx.preference = 10; mail_exchange = name "mail.example.local" } )
+        { Mx.preference = 10; mail_exchange = name "mail.vpn.local" } )
   in
   let mail_a = 300l, Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "192.168.1.25") in
   Dns_trie.empty
@@ -77,11 +77,11 @@ let build_initial_trie () =
   |> Dns_trie.insert zone Rr_map.Ns (300l, ns_set)
   |> Dns_trie.insert zone Rr_map.Txt zone_txt
   |> Dns_trie.insert zone Rr_map.Mx mx
-  |> Dns_trie.insert (name "ns1.example.local") Rr_map.A ns1_a
-  |> Dns_trie.insert (name "www.example.local") Rr_map.A www_a
-  |> Dns_trie.insert (name "api.example.local") Rr_map.A api_a
-  |> Dns_trie.insert (name "api.example.local") Rr_map.Txt api_txt
-  |> Dns_trie.insert (name "mail.example.local") Rr_map.A mail_a
+  |> Dns_trie.insert (name "ns1.vpn.local") Rr_map.A ns1_a
+  |> Dns_trie.insert (name "www.vpn.local") Rr_map.A www_a
+  |> Dns_trie.insert (name "api.vpn.local") Rr_map.A api_a
+  |> Dns_trie.insert (name "api.vpn.local") Rr_map.Txt api_txt
+  |> Dns_trie.insert (name "mail.vpn.local") Rr_map.A mail_a
 ;;
 
 (* Forward query to upstream DNS *)
@@ -101,20 +101,36 @@ let forward_query ~net ~clock query_buf =
 
 (* Handle a single DNS query *)
 let handle_query ~net ~clock ~now server_state src src_port query_buf =
+  let open Dns in
   let query_str = Cstruct.to_string query_buf in
-  let ts = Int64.of_float (Ptime.Span.to_float_s (Ptime.to_span now)) in
-  (* Try local DNS server first *)
-  let replies =
-    Server_state.handle_request server_state ~now ~ts ~proto:`Udp ~src ~src_port query_str
-  in
-  match replies with
-  | reply :: _ ->
-    Logs.info (fun m -> m "-> Local");
-    Some (Cstruct.of_string reply)
-  | [] ->
-    (* No local answer, forward to upstream *)
-    Logs.info (fun m -> m "-> Forward");
-    forward_query ~net ~clock query_buf
+  (* Check if query is for our local zone *)
+  match Packet.decode query_str with
+  | Error _ -> None
+  | Ok query ->
+    (match query.Packet.data with
+     | `Query ->
+       let name, _q_type = query.Packet.question in
+       let domain_str = Domain_name.to_string name in
+       (* Check if this is for our local zone *)
+       if String.ends_with ~suffix:".vpn.local" domain_str
+          || domain_str = "vpn.local"
+       then (
+         (* Query is for our zone, use local DNS server *)
+         let ts = Int64.of_float (Ptime.Span.to_float_s (Ptime.to_span now)) in
+         let replies =
+           Server_state.handle_request server_state ~now ~ts ~proto:`Udp ~src ~src_port
+             query_str
+         in
+         match replies with
+         | reply :: _ ->
+           Logs.info (fun m -> m "-> Local: %s" domain_str);
+           Some (Cstruct.of_string reply)
+         | [] -> None)
+       else (
+         (* Not our zone, forward to upstream *)
+         Logs.info (fun m -> m "-> Forward: %s" domain_str);
+         forward_query ~net ~clock query_buf)
+     | _ -> None)
 ;;
 
 (* DNS server - listens for queries and spawns fibers to handle them *)
@@ -150,7 +166,7 @@ let record_populator ~clock server_state =
     Eio.Time.sleep clock 10.0;
     incr counter;
     (* Example: add a dynamic record *)
-    let dynamic_name = name (Printf.sprintf "dynamic%d.example.local" !counter) in
+    let dynamic_name = name (Printf.sprintf "dynamic%d.vpn.local" !counter) in
     let ip =
       Ipaddr.V4.of_string_exn (Printf.sprintf "10.0.0.%d" (1 + (!counter mod 254)))
     in
