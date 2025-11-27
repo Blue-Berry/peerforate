@@ -1,7 +1,7 @@
 (* DNS Client Library using Dns_client *)
 (* TODO: setup search in resolv.conf *)
 
-module Client = struct
+module T = struct
   type +'a io = 'a
 
   type stack =
@@ -99,9 +99,9 @@ module Client = struct
   let lift x = x
 end
 
-module C = Dns_client.Make (Client)
+include T
+include Dns_client.Make (T)
 
-(* Helper function to create a DNS client with proper types *)
 let create_client
       ?nameservers
       ~(clock : float Eio.Time.clock_ty Eio.Resource.t)
@@ -110,9 +110,6 @@ let create_client
       ~(net : Eio_unix.Net.t)
       ()
   =
-  let client = C.create ?nameservers ~timeout { net; sw; clock } in
+  let client = create ?nameservers ~timeout { net; sw; clock } in
   client
 ;;
-
-(* TODO: *)
-(* include C *)

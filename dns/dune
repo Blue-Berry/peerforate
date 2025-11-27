@@ -25,6 +25,6 @@
  (libraries dnslib))
 
 (executable
- (name client_functor_example)
- (modules client_functor_example)
+ (name client_example)
+ (modules client_example)
  (libraries dnslib))

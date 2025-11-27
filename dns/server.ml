@@ -3,7 +3,7 @@ open Core
 let name s = Domain_name.(host_exn (of_string_exn s))
 
 module Config = struct
-  let listen_port = 5354
+  let server_listen_port = 5354
   let upstream_ip = Eio.Net.Ipaddr.of_raw "\008\008\008\008" (* 8.8.8.8 *)
   let upstream_port = 53
   let zone_str = "vpn.local"
@@ -127,9 +127,9 @@ let handle_query ~net ~clock ~now server_state src src_port query_buf =
 let dns_serve ~net ~clock server_state =
   Eio.Switch.run
   @@ fun sw ->
-  let listening_addr = `Udp (Eio.Net.Ipaddr.V4.any, Config.listen_port) in
+  let listening_addr = `Udp (Eio.Net.Ipaddr.V4.any, Config.server_listen_port) in
   let sock = Eio.Net.datagram_socket ~sw net listening_addr in
-  Logs.info (fun m -> m "DNS server listening on port %d" Config.listen_port);
+  Logs.info (fun m -> m "DNS server listening on port %d" Config.server_listen_port);
   let buf = Cstruct.create 4096 in
   while true do
     let client_addr, len = Eio.Net.recv sock buf in
