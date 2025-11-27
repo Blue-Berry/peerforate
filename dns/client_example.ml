@@ -16,7 +16,7 @@ let () =
   @@ fun sw ->
   (* Create DNS client using the helper function *)
   let nameservers = `Udp, [ Ipaddr.of_string_exn "127.0.0.1", 5354 ] in
-  let client = create_client ~nameservers ~timeout:5_000_000_000L ~sw ~net ~clock () in
+  let client = create ~nameservers ~timeout:5_000_000_000L ~sw ~net ~clock () in
   Logs.info (fun m -> m "DNS client created with nameservers: localhost:5354");
   (* Example 1: Query TXT records for key.vpn.local *)
   Logs.info (fun m -> m "Querying TXT records for key.vpn.local...");

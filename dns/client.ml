@@ -102,7 +102,7 @@ end
 include T
 include Dns_client.Make (T)
 
-let create_client
+let create
       ?nameservers
       ~(clock : float Eio.Time.clock_ty Eio.Resource.t)
       ~timeout
