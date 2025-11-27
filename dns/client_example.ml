@@ -41,7 +41,7 @@ let () =
      print_endline "Failed to resolve google.com");
   (* Example 3: Generic query for TXT records using getaddrinfo *)
   Logs.info (fun m -> m "Querying TXT records for test.vpn.local using getaddrinfo...");
-  match getaddrinfo client Dns.Rr_map.Txt (name "test.vpn.local") with
+  match getaddrinfo client Dns.Rr_map.Txt (name "key.vpn.local") with
   | Ok (_ttl, txt_set) ->
     let records = Dns.Rr_map.Txt_set.elements txt_set in
     Logs.info (fun m -> m "Found %d TXT record(s)" (List.length records));

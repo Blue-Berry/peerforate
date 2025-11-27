@@ -1,6 +1,7 @@
 open Core
+open Utils
 
-let name s = Domain_name.(host_exn (of_string_exn s))
+(* TODO: Crash on no internet *)
 
 module Config = struct
   let server_listen_port = 5354
@@ -76,11 +77,28 @@ let build_trie () =
   |> Dns_trie.insert (name "key.vpn.local") Rr_map.Txt key_txt
 ;;
 
+let query ~sw ~net ~dst ~query_buf ~clock =
+  let sock = Eio.Net.datagram_socket ~sw net `UdpV4 in
+  match Eio.Net.send sock ~dst [ query_buf ] with
+  | exception e ->
+    Logs.warn (fun m -> m "Error making query: %a" Eio.Exn.pp e);
+    None
+  | () ->
+    let resp_buf = Cstruct.create 4096 in
+    (match
+       Eio.Time.with_timeout clock 2.0 (fun () -> Ok (Eio.Net.recv sock resp_buf))
+     with
+     | Ok (_addr, len) -> Some (Cstruct.sub resp_buf 0 len)
+     | Error `Timeout ->
+       Logs.warn (fun m -> m "Upstream timeout");
+       None)
+;;
+
 let forward_query ~net ~clock query_buf =
   Eio.Switch.run
   @@ fun sw ->
   let upstream = `Udp Config.(upstream_ip, upstream_port) in
-  Utils.query ~sw ~net ~dst:upstream ~query_buf ~clock
+  query ~sw ~net ~dst:upstream ~query_buf ~clock
 ;;
 
 let is_local_zone name =
@@ -148,6 +166,7 @@ let dns_serve ~net ~clock server_state =
   done
 ;;
 
+(* TODO: Remove *)
 (* Example background task: periodically update records *)
 let record_populator ~clock server_state =
   let counter = ref 0 in
@@ -168,4 +187,12 @@ let record_populator ~clock server_state =
     Logs.info (fun m ->
       m "Added record: %a -> %a" Domain_name.pp dynamic_name Ipaddr.V4.pp ip)
   done
+;;
+
+let add_record server_state name key value =
+  State.update server_state ~f:(fun server ->
+    let trie = Dns_server.Primary.data server in
+    let trie = Dns_trie.insert name key value trie in
+    let rng = Mirage_crypto_rng.generate ?g:None in
+    Dns_server.Primary.create ~rng trie)
 ;;
