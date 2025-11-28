@@ -73,6 +73,8 @@ let main server_key =
   |> print_endline
 ;;
 
+let tofu = Tofu.read_known_servers ()
+
 let () =
   Eio_main.run
   @@ fun env ->
@@ -81,5 +83,9 @@ let () =
   let net : Eio_unix.Net.t = (Eio.Stdenv.net env :> Eio_unix.Net.t) in
   let clock = Eio.Stdenv.clock env in
   let key = get_key ~net ~clock |> Option.value_exn in
-  main key
+  let tofu, authed = Tofu.authenticate tofu Tofu.{ key; endpoint = "127.0.0.1", 5354 } in
+  Tofu.write_known_servers tofu;
+  match authed with
+  | true -> main key
+  | false -> print_endline "Server not authenticated"
 ;;
