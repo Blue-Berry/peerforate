@@ -24,4 +24,15 @@ val dns_serve
   -> 'a
 
 val record_populator : clock:[> float Eio.Time.clock_ty ] Eio.Resource.t -> State.t -> 'a
-val add_record : State.t -> 'a Domain_name.t -> 'b Dns.Rr_map.rr -> 'b -> unit
+
+val add_record
+  :  State.t
+  -> name:'a Domain_name.t
+  -> key:'b Dns.Rr_map.rr
+  -> value:'b
+  -> unit
+
+module Config : sig
+  val server_listen_port : int
+  val with_zone : string -> string
+end

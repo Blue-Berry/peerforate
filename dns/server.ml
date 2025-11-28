@@ -6,7 +6,7 @@ module Config = struct
   let upstream_ip = Eio.Net.Ipaddr.of_raw "\008\008\008\008" (* 8.8.8.8 *)
   let upstream_port = 53
   let zone_str = "vpn.local"
-  let with_zone n = String.append n zone_str
+  let with_zone n = n ^ "." ^ zone_str
 
   let zone =
     let open Domain_name in
@@ -70,11 +70,11 @@ let build_trie () =
         ; minimum
         })
   in
-  let key_txt = 300l, Rr_map.Txt_set.singleton Wg_nat.Crypto.rng_pub_key in
-  Dns_trie.empty
-  |> Dns_trie.insert Config.zone Rr_map.Soa soa
-  |> Dns_trie.insert (Config.with_zone "key" |> name) Rr_map.Txt key_txt
+  (* let key_txt = 300l, Rr_map.Txt_set.singleton Wg_nat.Crypto.rng_pub_key in *)
+  Dns_trie.empty |> Dns_trie.insert Config.zone Rr_map.Soa soa
 ;;
+
+(* |> Dns_trie.insert (Config.with_zone "key" |> name) Rr_map.Txt key_txt *)
 
 let query ~sw ~net ~dst ~query_buf ~clock =
   let sock = Eio.Net.datagram_socket ~sw net `UdpV4 in
@@ -188,7 +188,7 @@ let record_populator ~clock server_state =
   done
 ;;
 
-let add_record server_state name key value =
+let add_record server_state ~name ~key ~value =
   State.update server_state ~f:(fun server ->
     let trie = Dns_server.Primary.data server in
     let trie = Dns_trie.insert name key value trie in

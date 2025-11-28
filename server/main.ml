@@ -90,7 +90,14 @@ let () =
   Eio.Fiber.both
     (fun () ->
        let open Dnslib.Server in
+       let open Dnslib in
        let server_state = State.create (build_trie ()) in
+       let key_txt = 300l, Dns.Rr_map.Txt_set.singleton Wg_nat.Crypto.rng_pub_key in
+       add_record
+         server_state
+         ~name:(Config.with_zone "key" |> Utils.name)
+         ~key:Dns.Rr_map.Txt
+         ~value:key_txt;
        Eio.Domain_manager.run domain_mgr (fun () -> dns_serve ~net ~clock server_state))
     (fun () -> main ~net)
 ;;
