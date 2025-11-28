@@ -19,14 +19,7 @@ let string_to_hex s =
 ;;
 
 let gen_mac ~priv_key ~pub_key ~message =
-  Printf.sprintf
-    "Generating MAC with priv_key %s\n and pub_key %s\n"
-    (string_to_hex (X25519.secret_to_octets priv_key))
-    (string_to_hex pub_key)
-  |> print_endline;
   match X25519.key_exchange priv_key pub_key with
   | Error _ -> None
-  | Ok key ->
-    Printf.sprintf "Generating MAC with secret: %s\n" (string_to_hex key) |> print_endline;
-    Some (Mirage_crypto.Poly1305.mac ~key message)
+  | Ok key -> Some (Mirage_crypto.Poly1305.mac ~key message)
 ;;

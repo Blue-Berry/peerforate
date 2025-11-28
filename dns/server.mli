@@ -1,21 +1,18 @@
 module State : sig
-  type t =
-    { mutable server : Dns_server.Primary.s
-    ; mutex : Eio.Mutex.t
-    }
+  type t
 
   val create : Dns_trie.t -> t
   val update : f:(Dns_server.Primary.s -> Dns_server.Primary.s) -> t -> unit
 
-  val handle_request
-    :  t
-    -> now:Ptime.t
-    -> ts:int64
-    -> proto:Dns.proto
-    -> src:Ipaddr.t
-    -> src_port:int
-    -> buf:string
-    -> string list
+  (* val handle_request *)
+  (*   :  t *)
+  (*   -> now:Ptime.t *)
+  (*   -> ts:int64 *)
+  (*   -> proto:Dns.proto *)
+  (*   -> src:Ipaddr.t *)
+  (*   -> src_port:int *)
+  (*   -> buf:string *)
+  (*   -> string list *)
 end
 
 val build_trie : unit -> Dns_trie.t

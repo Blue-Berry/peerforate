@@ -1,6 +1,6 @@
 (executable
  (public_name peerforate-server)
  (name main)
- (libraries wg_nat cstruct cstruct-sexp core core_unix)
+ (libraries wg_nat cstruct cstruct-sexp core core_unix eio eio_main logs)
  (preprocess
   (pps ppx_cstruct)))

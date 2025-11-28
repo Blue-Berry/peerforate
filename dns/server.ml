@@ -1,13 +1,12 @@
 open Core
 open Utils
 
-(* TODO: Crash on no internet *)
-
 module Config = struct
   let server_listen_port = 5354
   let upstream_ip = Eio.Net.Ipaddr.of_raw "\008\008\008\008" (* 8.8.8.8 *)
   let upstream_port = 53
   let zone_str = "vpn.local"
+  let with_zone n = String.append n zone_str
 
   let zone =
     let open Domain_name in
@@ -62,8 +61,8 @@ let build_trie () =
   let soa =
     Config.(
       Soa.
-        { nameserver = raw (String.append "ns1" Config.zone_str)
-        ; hostmaster = raw (String.append "admin" Config.zone_str)
+        { nameserver = raw (Config.with_zone "ns1")
+        ; hostmaster = raw (Config.with_zone "admin")
         ; serial
         ; refresh
         ; retry
@@ -74,7 +73,7 @@ let build_trie () =
   let key_txt = 300l, Rr_map.Txt_set.singleton Wg_nat.Crypto.rng_pub_key in
   Dns_trie.empty
   |> Dns_trie.insert Config.zone Rr_map.Soa soa
-  |> Dns_trie.insert (name "key.vpn.local") Rr_map.Txt key_txt
+  |> Dns_trie.insert (Config.with_zone "key" |> name) Rr_map.Txt key_txt
 ;;
 
 let query ~sw ~net ~dst ~query_buf ~clock =

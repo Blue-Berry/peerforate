@@ -13,6 +13,7 @@ module Packet : sig
   val sexp_of_t : t -> Sexplib.Sexp.t
   val t_of_sexp : Sexplib.Sexp.t -> t
   val of_bytes : ?hdr:bool -> bytes -> t
+  val of_cstruct : ?hdr:bool -> Cstruct.t -> t
   val create_buffer : ?hdr:bool -> unit -> bytes
 
   val gen_mac

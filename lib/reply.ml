@@ -49,6 +49,8 @@ module Packet = struct
       t
   ;;
 
+  let to_cstruct ?(hdr = false) t = to_bytes ~hdr t |> Cstruct.of_bytes
+
   let create_buffer ?(hdr = false) () =
     if hdr then Cstruct.create sizeof_t |> Cstruct.to_bytes else Bytes.create payload_size
   ;;

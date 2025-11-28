@@ -26,7 +26,7 @@ let string_to_hex s =
   |> String.concat
 ;;
 
-let () =
+let _old () =
   let sock = Core_unix.socket ~domain:PF_INET ~kind:SOCK_DGRAM ~protocol:0 () in
   Core_unix.bind
     sock
@@ -71,4 +71,60 @@ let () =
       (Core_unix.sexp_of_sockaddr addr |> Sexp.to_string_hum)
     |> print_endline
   done
+;;
+
+module Config = struct
+  let listen_port = 49918
+end
+
+let main ~net =
+  Eio.Switch.run
+  @@ fun sw ->
+  let listening_addr = `Udp (Eio.Net.Ipaddr.V4.any, Config.listen_port) in
+  let sock = Eio.Net.datagram_socket ~sw net listening_addr in
+  let buf = Cstruct.create 4096 in
+  while true do
+    let client_addr, len = Eio.Net.recv sock buf in
+    Logs.info (fun m ->
+      m "Received %d bytes from %a\n%!" len Eio.Net.Sockaddr.pp client_addr);
+    let packet = P.of_cstruct ~hdr:false buf in
+    let hst_key = P.copy_t_hst_key packet |> K.of_string in
+    let dest_key = P.copy_t_dest_key packet |> K.of_string in
+    let timestamp = P.get_t_timestamp packet in
+    let mac = P.copy_t_mac packet |> string_to_hex in
+    Logs.info (fun m ->
+      m
+        "Version: %d\nhost key: %s\ndest key %s\ntimestamp: %d\nMAC: %s"
+        (P.get_t_version packet)
+        (hst_key |> K.to_base64_string)
+        (dest_key |> K.to_base64_string)
+        (Int64.to_int_exn timestamp)
+        mac);
+    let mac =
+      P.gen_mac
+        ~pub_key:(hst_key |> K.to_string)
+        ~priv_key:Wg_nat.Crypto.rng_priv_key
+        ~hst_key:(K.to_string hst_key)
+        ~dest_key:(K.to_string dest_key)
+        timestamp
+      |> string_to_hex
+    in
+    Logs.info (fun m -> m "Generated MAC %s" mac);
+    let reply = R.create ~hst_key ~dest_key () |> R.to_cstruct ~hdr:false in
+    Eio.Net.send sock [ reply ] ~dst:client_addr;
+    Logs.info (fun m -> m "Sent reply to %a\n" Eio.Net.Sockaddr.pp client_addr)
+  done
+;;
+
+let () =
+  Logs.set_level (Some Logs.Info);
+  Logs.set_reporter (Logs.format_reporter ());
+  Eio_main.run
+  @@ fun env ->
+  (* Initialize random number generator *)
+  Mirage_crypto_rng_unix.use_default ();
+  let net = Eio.Stdenv.net env in
+  let _clock = Eio.Stdenv.clock env in
+  let _domain_mgr = Eio.Stdenv.domain_mgr env in
+  main ~net
 ;;
