@@ -44,7 +44,7 @@ let main ~net =
     if len < P.payload_size
     then Logs.info (fun m -> m "Invalid packetsize %d" len)
     else (
-      let packet = P.of_cstruct ~hdr:false buf in
+      let packet = P.of_cstruct ~hdr:false (Cstruct.sub buf 0 len) in
       let hst_key = P.copy_t_hst_key packet |> K.of_string in
       let dest_key = P.copy_t_dest_key packet |> K.of_string in
       let timestamp = P.get_t_timestamp packet in
