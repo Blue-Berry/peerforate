@@ -26,5 +26,6 @@ CAMLprim value caml_apply_nat_punch_filter(value v_sock_fd, value v_server_ip,
   struct sock_fprog prog = {.len = sizeof(filter) / sizeof(filter[0]),
                             .filter = filter};
 
-  return setsockopt(sock_fd, SOL_SOCKET, SO_ATTACH_FILTER, &prog, sizeof(prog));
+  int result = setsockopt(sock_fd, SOL_SOCKET, SO_ATTACH_FILTER, &prog, sizeof(prog));
+  CAMLreturn(Val_int(result));
 }
