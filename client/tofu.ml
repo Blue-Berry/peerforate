@@ -33,16 +33,21 @@ let known_servers_dir () =
 
 let known_servers_path () = Filename.concat (known_servers_dir ()) "known_servers"
 
-let ensure_dir_exists path =
-  if not (Stdlib.Sys.file_exists path) then Core_unix.mkdir path ~perm:0o700
+let rec ensure_directory path =
+  if String.equal path Filename.dir_sep
+  then ()
+  else (
+    let parent = Filename.dirname path in
+    if not (String.equal parent path) then ensure_directory parent;
+    match Core_unix.mkdir path ~perm:0o700 with
+    | () -> ()
+    | exception exn ->
+      (match Core_unix.stat path with
+       | { st_kind = S_DIR; _ } -> ()
+       | _ -> raise exn))
 ;;
 
-let ensure_known_servers_dir () =
-  let dir = known_servers_dir () in
-  let config_dir = Filename.dirname dir in
-  ensure_dir_exists config_dir;
-  ensure_dir_exists dir
-;;
+let ensure_known_servers_dir () = known_servers_dir () |> ensure_directory
 
 let read_known_servers () =
   let path = known_servers_path () in
@@ -52,7 +57,8 @@ let read_known_servers () =
 let write_known_servers t =
   ensure_known_servers_dir ();
   let path = known_servers_path () in
-  Out_channel.write_all path ~data:(to_string t)
+  Out_channel.with_file path ~perm:0o600 ~f:(fun oc ->
+    Out_channel.output_string oc (to_string t))
 ;;
 
 (*
@@ -74,18 +80,15 @@ let write_known_servers t =
 │ allow │             │ deny │                                                
 └───────┘             └──────┘                                                
  *)
-type auth_status =
-  | Allow
-  | Deny
 
 let authenticate (t : t) ({ endpoint; key } as new_server) =
   match
     List.find t ~f:(fun { server; _ } -> Endpoint.equal server.endpoint endpoint)
     |> Option.bind ~f:(fun k -> Some String.(k.server.key = key))
   with
-  | Some false -> t, Deny
-  | Some true -> t, Allow
+  | Some false -> t, false
+  | Some true -> t, true
   | None ->
     let first_seen = Ptime_clock.now () |> Ptime.to_float_s |> Float.to_int64 in
-    { server = new_server; first_seen } :: t, Allow
+    { server = new_server; first_seen } :: t, true
 ;;

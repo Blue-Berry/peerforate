@@ -20,9 +20,4 @@ type t = entry list
 
 val read_known_servers : unit -> t
 val write_known_servers : t -> unit
-
-type auth_status =
-  | Allow
-  | Deny
-
-val authenticate : t -> server -> t * auth_status
+val authenticate : t -> server -> t * bool
