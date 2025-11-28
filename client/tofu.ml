@@ -51,7 +51,10 @@ let ensure_known_servers_dir () = known_servers_dir () |> ensure_directory
 
 let read_known_servers () =
   let path = known_servers_path () in
-  if Stdlib.Sys.file_exists path then In_channel.read_all path |> of_string else []
+  if Stdlib.Sys.file_exists path then
+    let contents = In_channel.read_all path in
+    if String.(is_empty (strip contents)) then [] else of_string contents
+  else []
 ;;
 
 let write_known_servers t =
