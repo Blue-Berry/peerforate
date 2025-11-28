@@ -2,13 +2,7 @@ module X25519 = Mirage_crypto_ec.X25519
 open Core
 
 let () = Mirage_crypto_rng_unix.use_default ()
-
-let rng_priv_key, rng_pub_key =
-  X25519.secret_of_octets "11111111111111111111111111111111"
-  |> Result.ok
-  |> Option.value_exn
-;;
-
+let rng_priv_key, rng_pub_key = X25519.gen_key ()
 let int_to_hex i = Printf.sprintf "%02x" i
 
 let string_to_hex s =
