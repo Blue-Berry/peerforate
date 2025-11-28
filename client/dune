@@ -1,10 +1,10 @@
 (executable
  (public_name peerforate-client)
  (name main)
- (modules main)
+ (modules main tofu)
  (libraries wg_nat core core_unix wglib bpf_filter dnslib eio eio_main)
  (preprocess
-  (pps ppx_cstruct)))
+  (pps ppx_cstruct ppx_jane)))
 
 (library
  (name bpf_filter)
