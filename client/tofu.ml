@@ -22,8 +22,41 @@ type entry =
 
 type t = entry list [@@deriving sexp]
 
+let to_string t = sexp_of_t t |> Sexp.to_string_mach
+let of_string s = Sexp.of_string s |> t_of_sexp
+
+let known_servers_dir () =
+  let home = Sys.getenv_exn "HOME" in
+  let config_dir = Filename.concat home ".config" in
+  Filename.concat config_dir "peerforate"
+;;
+
+let known_servers_path () = Filename.concat (known_servers_dir ()) "known_servers"
+
+let ensure_dir_exists path =
+  if not (Stdlib.Sys.file_exists path) then Core_unix.mkdir path ~perm:0o700
+;;
+
+let ensure_known_servers_dir () =
+  let dir = known_servers_dir () in
+  let config_dir = Filename.dirname dir in
+  ensure_dir_exists config_dir;
+  ensure_dir_exists dir
+;;
+
+let read_known_servers () =
+  let path = known_servers_path () in
+  if Stdlib.Sys.file_exists path then In_channel.read_all path |> of_string else []
+;;
+
+let write_known_servers t =
+  ensure_known_servers_dir ();
+  let path = known_servers_path () in
+  Out_channel.write_all path ~data:(to_string t)
+;;
+
 (*
-                                                                              
+                                                                               
                     yes    ┌─────────────────┐   no                           
                   ┌────────┼ Endpoint known? ┼─────────────────┐              
                   │        └─────────────────┘                 │              
@@ -44,14 +77,15 @@ type t = entry list [@@deriving sexp]
 type auth_status =
   | Allow
   | Deny
-  | New
 
-let authenticate (t : t) { endpoint; key } : auth_status =
+let authenticate (t : t) ({ endpoint; key } as new_server) =
   match
     List.find t ~f:(fun { server; _ } -> Endpoint.equal server.endpoint endpoint)
     |> Option.bind ~f:(fun k -> Some String.(k.server.key = key))
   with
-  | None -> New
-  | Some false -> Deny
-  | Some true -> Allow
+  | Some false -> t, Deny
+  | Some true -> t, Allow
+  | None ->
+    let first_seen = Ptime_clock.now () |> Ptime.to_float_s |> Float.to_int64 in
+    { server = new_server; first_seen } :: t, Allow
 ;;
