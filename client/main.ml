@@ -16,7 +16,20 @@ let string_to_hex s =
   |> String.concat
 ;;
 
-let () =
+let get_key ~net ~clock =
+  let open Dnslib in
+  Eio.Switch.run
+  @@ fun sw ->
+  let nameservers = `Udp, [ Ipaddr.of_string_exn "127.0.0.1", 5354 ] in
+  let client = Client.create ~nameservers ~timeout:5_000_000_000L ~sw ~net ~clock () in
+  match Client.get_resource_record client Dns.Rr_map.Txt (Utils.name "key.vpn.local") with
+  | Ok (_ttl, txt_set) ->
+    let record = Dns.Rr_map.Txt_set.elements txt_set |> List.hd in
+    record
+  | _ -> None
+;;
+
+let main server_key =
   let sock = Wg_nat.Request.RawUdpSock.init () in
   let key = Wglib.Wgapi.Key.generate_private_key () in
   Printf.printf "key: %s\n" (Wglib.Wgapi.Key.to_base64_string (K.generate_public_key key));
@@ -38,7 +51,7 @@ let () =
          |> Result.ok
          |> Option.value_exn
          |> fst)
-      ~pub_key:Wg_nat.Crypto.rng_pub_key
+      ~pub_key:server_key
   in
   Printf.sprintf "MAC: %s\n" (P.copy_t_mac packet |> string_to_hex) |> print_endline;
   let bytes_sent =
@@ -58,4 +71,15 @@ let () =
     (R.copy_t_hst_key reply |> K.of_string |> K.to_base64_string)
     (R.copy_t_dest_key reply |> K.of_string |> K.to_base64_string)
   |> print_endline
+;;
+
+let () =
+  Eio_main.run
+  @@ fun env ->
+  (* Initialize random number generator *)
+  Mirage_crypto_rng_unix.use_default ();
+  let net : Eio_unix.Net.t = (Eio.Stdenv.net env :> Eio_unix.Net.t) in
+  let clock = Eio.Stdenv.clock env in
+  let key = get_key ~net ~clock |> Option.value_exn in
+  main key
 ;;
