@@ -5,6 +5,7 @@ module Packet = struct
 
   let version = 1
 
+  (* TODO: Handle ip v4 and v6  with a flag to reply with which is used  *)
   [%%cstruct
     type t =
       { _iphdr : uint8_t [@len 20]
@@ -13,11 +14,25 @@ module Packet = struct
       ; len : uint16_t
       ; _check : uint16_t
       ; version : uint8_t
-      ; hst_key : uint8_t [@len 32]
-      ; dest_key : uint8_t [@len 32]
+      ; found : uint8_t
+      ; v4v6 : uint8_t
+      ; endpoint : uint8_t [@len 16]
+      ; port : uint16_t
       ; rsrvd : uint8_t [@len 32]
       }
     [@@big_endian]]
+
+  [%%cenum
+    type found =
+      | Found
+      | Not_Found
+    [@@uint8_t]]
+
+  [%%cenum
+    type v4v6 =
+      | V4
+      | V6
+    [@@uint8_t]]
 
   let iphdr_len = 20
   let udphdr_len = 8
@@ -55,27 +70,23 @@ module Packet = struct
     if hdr then Cstruct.create sizeof_t |> Cstruct.to_bytes else Bytes.create payload_size
   ;;
 
-  let create ?(source = 0) ?(dest_port = 0) ~hst_key ~dest_key () =
-    Cstruct.create sizeof_t
-    |> fun cs ->
+  let create ?(source = 0) ?(dest_port = 0) ~found ~(endpoint : Ipaddr.t) ~port () =
+    let cs = Cstruct.create sizeof_t in
     set_t_source cs source;
-    cs
-    |> fun cs ->
     set_t_dest cs dest_port;
-    cs
-    |> fun cs ->
     set_t_len cs sizeof_t;
-    cs
-    |> fun cs ->
     set_t_version cs version;
-    cs
-    |> fun cs ->
-    let dest_key = Wglib.Wgapi.Key.to_string dest_key in
-    set_t_dest_key dest_key 0 cs;
-    cs
-    |> fun cs ->
-    let hst_key = Wglib.Wgapi.Key.to_string hst_key in
-    set_t_hst_key hst_key 0 cs;
+    set_t_found cs (found_to_int found);
+    set_t_port cs port;
+    (match endpoint with
+     | Ipaddr.V4 ip ->
+       let ipv4_bytes = Ipaddr.V4.to_octets ip in
+       let padded_endpoint = ipv4_bytes ^ String.make 12 '\000' in
+       set_t_endpoint padded_endpoint 0 cs;
+       set_t_v4v6 cs (v4v6_to_int V4)
+     | Ipaddr.V6 _ ->
+       set_t_endpoint (Ipaddr.to_octets endpoint) 0 cs;
+       set_t_v4v6 cs (v4v6_to_int V6));
     cs
   ;;
 end

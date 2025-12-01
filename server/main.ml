@@ -11,20 +11,16 @@ module K = Wglib.Wgapi.Key
 (*   - Refactor *)
 (*   - Add tests *)
 (*   - Switch to ipv6 *)
+(* add timeouit for client recv  *)
 
-let int_to_hex i = Printf.sprintf "%02x" i
+(* let int_to_hex i = Printf.sprintf "%02x" i *)
 
-let string_to_hex s =
-  String.to_sequence s
-  |> Sequence.map ~f:(fun c -> Char.to_int c |> int_to_hex)
-  |> Sequence.to_list
-  |> String.concat
-;;
-
-module Config = struct
-  let listen_port = 49918
-  let max_message_age_s = 2.0
-end
+(* let string_to_hex s = *)
+(*   String.to_sequence s *)
+(*   |> Sequence.map ~f:(fun c -> Char.to_int c |> int_to_hex) *)
+(*   |> Sequence.to_list *)
+(*   |> String.concat *)
+(* ;; *)
 
 let main ~net =
   Eio.Switch.run
@@ -32,52 +28,41 @@ let main ~net =
   let listening_addr = `Udp (Eio.Net.Ipaddr.V4.any, Config.listen_port) in
   let sock = Eio.Net.datagram_socket ~sw net listening_addr in
   let buf = Cstruct.create 4096 in
+  let client_map = Client_map.create () in
   while true do
     let client_addr, len = Eio.Net.recv sock buf in
-    Logs.info (fun m ->
-      m
-        "Received %d bytes from %a; Expected: %d\n"
-        len
-        Eio.Net.Sockaddr.pp
-        client_addr
-        P.payload_size);
     if len < P.payload_size
     then Logs.info (fun m -> m "Invalid packetsize %d" len)
     else (
-      let packet = P.of_cstruct ~hdr:false (Cstruct.sub buf 0 len) in
-      let hst_key = P.copy_t_hst_key packet |> K.of_string in
-      let dest_key = P.copy_t_dest_key packet |> K.of_string in
-      let timestamp = P.get_t_timestamp packet in
-      let mac = P.copy_t_mac packet |> string_to_hex in
-      Logs.info (fun m ->
-        m
-          "Version: %d\nHost key: %s\nDest key %s\nTimestamp: %s\nMAC: %s"
-          (P.get_t_version packet)
-          (hst_key |> K.to_base64_string)
-          (dest_key |> K.to_base64_string)
-          (Int64.to_string_hum timestamp)
-          mac);
-      let mac =
-        P.gen_mac
-          ~pub_key:(hst_key |> K.to_string)
-          ~priv_key:Wg_nat.Crypto.rng_priv_key
-          ~hst_key:(K.to_string hst_key)
-          ~dest_key:(K.to_string dest_key)
-          timestamp
-        |> string_to_hex
-      in
-      let now =
-        Ptime.v (Ptime_clock.now_d_ps ()) |> Ptime.to_span |> Ptime.Span.to_float_s
-      in
-      let timestamp = Int64.to_float timestamp in
-      let age = now -. timestamp in
-      if Float.(age < Config.max_message_age_s) && Float.(age >= 0.)
-      then (
-        Logs.info (fun m -> m "Generated MAC %s" mac);
-        let reply = R.create ~hst_key ~dest_key () |> R.to_cstruct ~hdr:false in
-        Eio.Net.send sock [ reply ] ~dst:client_addr;
-        Logs.info (fun m -> m "Sent reply to %a\n" Eio.Net.Sockaddr.pp client_addr))
-      else Logs.info (fun m -> m "Message too old"))
+      match client_addr with
+      | `Udp (ip, port) ->
+        let packet = P.of_cstruct ~hdr:false (Cstruct.sub buf 0 len) in
+        Eio.Net.Ipaddr.fold
+          ~v4:(fun ip ->
+            let ip = Dnslib.Utils.eio_to_ipaddr ip in
+            match Auth.is_valid_timestamp packet, Auth.is_valid_mac packet with
+            | true, true ->
+              (match
+                 Client_map.handle_packet
+                   client_map
+                   packet
+                   ~client_addr:ip
+                   ~client_port:port
+               with
+               | None -> ()
+               | Some (addr, port) ->
+                 let reply =
+                   R.create ~found:R.Found ~endpoint:addr ~port ()
+                   |> R.to_cstruct ~hdr:false
+                 in
+                 Eio.Net.send sock [ reply ] ~dst:client_addr;
+                 Logs.info (fun m ->
+                   m "Sent reply to %a\n" Eio.Net.Sockaddr.pp client_addr))
+            | false, _ -> Logs.info (fun m -> m "Message too old")
+            | _, false -> Logs.info (fun m -> m "Message Invalid MAC"))
+          ~v6:(fun _ -> Logs.info (fun m -> m "Can't handle ipv6"))
+          ip
+      | _ -> Logs.info (fun m -> m "Invalid client socket address"))
   done
 ;;
 
