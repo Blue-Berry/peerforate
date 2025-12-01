@@ -4,7 +4,6 @@ module R = Wg_nat.Reply.Packet
 module K = Wglib.Wgapi.Key
 
 (* TODO: *)
-(*   - Periodic update of address (set dest_key to null) *)
 (* - eBPF nat check when packet is being sent *)
 
 let int_to_hex i = Printf.sprintf "%02x" i
@@ -65,13 +64,15 @@ let main server_key =
   let recieved = Core_unix.recv sock ~buf:reply ~pos:0 ~len:R.sizeof_t ~mode:[] in
   Printf.printf "Recieved: %d Bytes\n" recieved;
   let reply = R.of_bytes ~hdr:true reply in
-  Printf.sprintf
-    "Reply: \n\tVersion: %d\n\thost key: %s\n\tdest key %s\n"
-    (R.get_t_version reply)
-    (R.copy_t_hst_key reply |> K.of_string |> K.to_base64_string)
-    (R.copy_t_dest_key reply |> K.of_string |> K.to_base64_string)
-  |> print_endline
+  R.hexdump_t reply
 ;;
+
+(* Printf.sprintf *)
+(*   "Reply: \n\tVersion: %d\n\thost key: %s\n\tdest key %s\n" *)
+(*   (R.get_t_version reply) *)
+(*   (R.copy_t_hst_key reply |> K.of_string |> K.to_base64_string) *)
+(*   (R.copy_t_dest_key reply |> K.of_string |> K.to_base64_string) *)
+(* |> print_endline *)
 
 let tofu = Tofu.read_known_servers ()
 
