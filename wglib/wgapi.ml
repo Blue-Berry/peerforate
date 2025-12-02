@@ -67,6 +67,13 @@ module Key = struct
     done;
     arr
   ;;
+
+  let sexp_of_t (key : t) = Base.Sexp.Atom (to_base64_string key)
+
+  let t_of_sexp (sexp : Base.Sexp.t) =
+    let open Base in
+    String.t_of_sexp sexp |> of_base64_string |> Result.ok_or_failwith
+  ;;
 end
 
 module Allowed_ip = struct

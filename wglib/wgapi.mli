@@ -11,6 +11,8 @@ module Key : sig
   val of_base64_string : string -> (t, string) result
   val to_string : t -> string
   val of_string : string -> t
+  val sexp_of_t : t -> Base.Sexp.t
+  val t_of_sexp : Base.Sexp.t -> t
 end
 
 module Allowed_ip : sig

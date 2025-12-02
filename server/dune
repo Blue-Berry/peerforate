@@ -12,6 +12,7 @@
   logs
   ptime
   ptime.clock.os
+  base64
   dnslib)
  (preprocess
-  (pps ppx_cstruct)))
+  (pps ppx_cstruct ppx_jane)))

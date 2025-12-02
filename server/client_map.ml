@@ -26,3 +26,10 @@ let handle_packet t (packet : Req.t) ~client_addr ~client_port =
   let dest_key = Req.copy_t_dest_key packet in
   Hashtbl.find t dest_key |> Option.bind ~f:(fun c -> Some (c.endpoint, c.port))
 ;;
+
+let cleanup (t : t) max_age =
+  let now_f = Time_float.now () in
+  Hashtbl.filter_inplace t ~f:(fun c ->
+    let age = Time_float.(abs_diff now_f c.last_seen) in
+    Time_float.Span.(age < max_age))
+;;

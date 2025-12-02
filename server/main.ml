@@ -13,19 +13,18 @@ module K = Wglib.Wgapi.Key
 (*   - Switch to ipv6 *)
 (* add timeouit for client recv  *)
 
-(* let int_to_hex i = Printf.sprintf "%02x" i *)
-
-(* let string_to_hex s = *)
-(*   String.to_sequence s *)
-(*   |> Sequence.map ~f:(fun c -> Char.to_int c |> int_to_hex) *)
-(*   |> Sequence.to_list *)
-(*   |> String.concat *)
-(* ;; *)
+let get_config () =
+  Config.read_server_config ()
+  |> function
+  | Some c -> c
+  | None -> Config.init_server_config ()
+;;
 
 let main ~net =
   Eio.Switch.run
   @@ fun sw ->
-  let listening_addr = `Udp (Eio.Net.Ipaddr.V4.any, Config.listen_port) in
+  let conf = get_config () in
+  let listening_addr = `Udp (Eio.Net.Ipaddr.V4.any, conf.listen_port) in
   let sock = Eio.Net.datagram_socket ~sw net listening_addr in
   let buf = Cstruct.create 4096 in
   let client_map = Client_map.create () in
@@ -40,7 +39,7 @@ let main ~net =
         Eio.Net.Ipaddr.fold
           ~v4:(fun ip ->
             let ip = Dnslib.Utils.eio_to_ipaddr ip in
-            match Auth.is_valid_timestamp packet, Auth.is_valid_mac packet with
+            match Auth.is_valid_timestamp packet conf, Auth.is_valid_mac packet conf with
             | true, true ->
               (match
                  Client_map.handle_packet
@@ -76,12 +75,20 @@ let () =
   let net = Eio.Stdenv.net env in
   let clock = Eio.Stdenv.clock env in
   let domain_mgr = Eio.Stdenv.domain_mgr env in
+  let conf = get_config () in
   Eio.Fiber.both
     (fun () ->
        let open Dnslib.Server in
        let open Dnslib in
        let server_state = State.create (build_trie ()) in
-       let key_txt = 300l, Dns.Rr_map.Txt_set.singleton Wg_nat.Crypto.rng_pub_key in
+       let key_txt =
+         ( 300l
+         , Dns.Rr_map.Txt_set.singleton
+             (Wg_nat.Crypto.public conf.key
+              |> function
+              | Ok k -> k
+              | Error _ -> failwith "Invalid key") )
+       in
        add_record
          server_state
          ~name:(Config.with_zone "key" |> Utils.name)
