@@ -87,6 +87,7 @@
               logs
               domain-name
               ptime
+              base64
             ];
           };
 

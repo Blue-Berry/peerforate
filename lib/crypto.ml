@@ -17,3 +17,12 @@ let gen_mac ~priv_key ~pub_key ~message =
   | Error _ -> None
   | Ok key -> Some (Mirage_crypto.Poly1305.mac ~key message)
 ;;
+
+let public key =
+  let basepoint =
+    String.init 32 ~f:(function
+      | 0 -> '\009'
+      | _ -> '\000')
+  in
+  X25519.key_exchange key basepoint
+;;

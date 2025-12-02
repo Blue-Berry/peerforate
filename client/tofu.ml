@@ -24,46 +24,16 @@ type t = entry list [@@deriving sexp]
 
 let to_string t = sexp_of_t t |> Sexp.to_string_mach
 let of_string s = Sexp.of_string s |> t_of_sexp
-
-let known_servers_dir () =
-  let home = Sys.getenv_exn "HOME" in
-  let config_dir = Filename.concat home ".config" in
-  Filename.concat config_dir "peerforate"
-;;
-
-let known_servers_path () = Filename.concat (known_servers_dir ()) "known_servers"
-
-let rec ensure_directory path =
-  if String.equal path Filename.dir_sep
-  then ()
-  else (
-    let parent = Filename.dirname path in
-    if not (String.equal parent path) then ensure_directory parent;
-    match Core_unix.mkdir path ~perm:0o700 with
-    | () -> ()
-    | exception exn ->
-      (match Core_unix.stat path with
-       | { st_kind = S_DIR; _ } -> ()
-       | _ -> raise exn))
-;;
-
-let ensure_known_servers_dir () = known_servers_dir () |> ensure_directory
+let filename = "known_servers"
 
 let read_known_servers () =
-  let path = known_servers_path () in
-  if Stdlib.Sys.file_exists path
-  then (
-    let contents = In_channel.read_all path in
-    if String.(is_empty (strip contents)) then [] else of_string contents)
-  else []
+  Wg_nat.Config.read_config_file ~filename
+  |> function
+  | "" -> []
+  | s -> of_string s
 ;;
 
-let write_known_servers t =
-  ensure_known_servers_dir ();
-  let path = known_servers_path () in
-  Out_channel.with_file path ~perm:0o600 ~f:(fun oc ->
-    Out_channel.output_string oc (to_string t))
-;;
+let write_known_servers t = Wg_nat.Config.write_config_file ~filename (to_string t)
 
 (*
                                                                                
