@@ -5,6 +5,7 @@ module K = Wglib.Wgapi.Key
 
 (* TODO: *)
 (* - eBPF nat check when packet is being sent *)
+(* Create a peer config system  *)
 
 let get_config () =
   Config.read_config ()
@@ -29,11 +30,17 @@ let get_key ~net ~clock (conf : Config.t) =
   | _ -> None
 ;;
 
+(* TODO: Iterate though all peers *)
 let main server_key (conf : Config.t) =
   let wg_intrf = Wgctrl.get_wg_intrf conf in
+  let priv_key = wg_intrf.private_key |> Option.value_exn in
+  let dest_key =
+    wg_intrf.peers
+    |> List.hd_exn
+    |> fun p -> Wglib.Wgapi.Peer.(p.public_key) |> Option.value_exn
+  in
+  let pub_key = wg_intrf.public_key |> Option.value_exn in
   let sock = Wg_nat.Request.RawUdpSock.init () in
-  let key = Wglib.Wgapi.Key.generate_private_key () in
-  Printf.printf "key: %s\n" (Wglib.Wgapi.Key.to_base64_string (K.generate_public_key key));
   Bpf_filter.attach_filter
     ~sock
     ~server_ip:(Core_unix.Inet_addr.of_string conf.server_endpoint)
@@ -43,10 +50,10 @@ let main server_key (conf : Config.t) =
     P.create
       ~source:51820
       ~dest_port:conf.server_port
-      ~hst_key:(K.generate_public_key key)
-      ~dest_key:(K.generate_public_key key)
+      ~hst_key:pub_key
+      ~dest_key
       ~priv_key:
-        (key
+        (priv_key
          |> K.to_string
          |> Wg_nat.Crypto.X25519.secret_of_octets ~compress:false
          |> Result.ok
@@ -72,17 +79,17 @@ let main server_key (conf : Config.t) =
   R.hexdump_t reply;
   Wgctrl.update_peer
     wg_intrf
-    key
+    pub_key
     (R.get_t_addr reply |> Option.value_exn)
     (R.get_t_port reply)
   |> ignore
 ;;
 
-(* Wgctrl.update_peer wg_intrf key () *)
-
 let tofu = Tofu.read_known_servers ()
 
 let () =
+  Logs.set_level (Some Logs.Info);
+  Logs.set_reporter (Logs.format_reporter ());
   Eio_main.run
   @@ fun env ->
   (* Initialize random number generator *)

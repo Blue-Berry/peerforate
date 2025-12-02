@@ -1,16 +1,43 @@
 let get_wg_intrf (conf : Config.t) =
   let open Wglib.Wgapi in
   match Interface.get_device conf.wg_interface with
-  | Ok d -> d
+  | Ok d ->
+    Logs.info (fun m ->
+      m
+        "Found wg interface: %s; Pub key: %s\n"
+        d.name
+        (d.public_key
+         |> function
+         | None -> ""
+         | Some k -> Key.to_base64_string k));
+    d
   | Error _ ->
     let private_key = Key.generate_private_key () in
     let public_key = Key.generate_public_key private_key in
-    Interface.create
-      ~private_key
-      ~public_key
-      ~listen_port:51820
-      ~name:conf.wg_interface
-      ()
+    let interface =
+      Interface.create
+        ~private_key
+        ~public_key
+        ~listen_port:51820
+        ~name:conf.wg_interface
+        ()
+    in
+    Logs.info (fun m ->
+      m
+        "Created wg interface: %s; Pub key: %s\n"
+        interface.name
+        (interface.public_key
+         |> function
+         | None -> ""
+         | Some k -> Key.to_base64_string k));
+    (Interface.set_device interface
+     |> function
+     | Ok () -> ()
+     | Error err ->
+       Logs.err
+       @@ fun m ->
+       m "Failed to set wg interface: %s\n" (Interface.DeviceError.to_string err));
+    interface
 ;;
 
 let update_peer wg_intrf public_key (endpoint : Ipaddr.t) port =
