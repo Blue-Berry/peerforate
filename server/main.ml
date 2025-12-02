@@ -51,8 +51,7 @@ let main ~net =
                | None -> ()
                | Some (addr, port) ->
                  let reply =
-                   R.create ~found:R.Found ~endpoint:addr ~port ()
-                   |> R.to_cstruct ~hdr:false
+                   R.create ~found:R.Found ~addr ~port () |> R.to_cstruct ~hdr:false
                  in
                  Eio.Net.send sock [ reply ] ~dst:client_addr;
                  Logs.info (fun m ->
