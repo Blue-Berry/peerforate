@@ -30,36 +30,45 @@ let main ~net =
   let client_map = Client_map.create () in
   while true do
     let client_addr, len = Eio.Net.recv sock buf in
+    Logs.info (fun m -> m "Recieved %d bytes\n" len);
     if len < P.payload_size
     then Logs.info (fun m -> m "Invalid packetsize %d" len)
     else (
       match client_addr with
       | `Udp (ip, port) ->
+        Logs.info (fun m -> m "Request addres: %a\n" Eio.Net.Ipaddr.pp ip);
         let packet = P.of_cstruct ~hdr:false (Cstruct.sub buf 0 len) in
         Eio.Net.Ipaddr.fold
+          ip
           ~v4:(fun ip ->
+            Logs.info (fun m -> m "Handeling ipv4 address\n");
             let ip = Dnslib.Utils.eio_to_ipaddr ip in
             match Auth.is_valid_timestamp packet conf, Auth.is_valid_mac packet conf with
             | true, true ->
-              (match
-                 Client_map.handle_packet
-                   client_map
-                   packet
-                   ~client_addr:ip
-                   ~client_port:port
-               with
-               | None -> ()
-               | Some (addr, port) ->
-                 let reply =
-                   R.create ~found:R.Found ~addr ~port () |> R.to_cstruct ~hdr:false
-                 in
-                 Eio.Net.send sock [ reply ] ~dst:client_addr;
-                 Logs.info (fun m ->
-                   m "Sent reply to %a\n" Eio.Net.Sockaddr.pp client_addr))
+              let reply =
+                match
+                  Client_map.handle_packet
+                    client_map
+                    packet
+                    ~client_addr:ip
+                    ~client_port:port
+                with
+                | None ->
+                  Logs.info (fun m -> m "Not found");
+                  R.create
+                    ~found:R.Not_Found
+                    ~addr:(Ipaddr.of_string_exn "0.0.0.0")
+                    ~port:0
+                    ()
+                  |> R.to_cstruct ~hdr:false
+                | Some (addr, port) ->
+                  R.create ~found:R.Found ~addr ~port () |> R.to_cstruct ~hdr:false
+              in
+              Eio.Net.send sock [ reply ] ~dst:client_addr;
+              Logs.info (fun m -> m "Sent reply to %a\n" Eio.Net.Sockaddr.pp client_addr)
             | false, _ -> Logs.info (fun m -> m "Message too old")
             | _, false -> Logs.info (fun m -> m "Message Invalid MAC"))
           ~v6:(fun _ -> Logs.info (fun m -> m "Can't handle ipv6"))
-          ip
       | _ -> Logs.info (fun m -> m "Invalid client socket address"))
   done
 ;;

@@ -5,6 +5,7 @@ module K = Wglib.Wgapi.Key
 
 (* TODO: *)
 (* - eBPF nat check when packet is being sent *)
+(* Create a peer config system  *)
 
 let get_config () =
   Config.read_config ()
@@ -29,24 +30,23 @@ let get_key ~net ~clock (conf : Config.t) =
   | _ -> None
 ;;
 
-let main server_key (conf : Config.t) =
-  let wg_intrf = Wgctrl.get_wg_intrf conf in
-  let sock = Wg_nat.Request.RawUdpSock.init () in
-  let key = Wglib.Wgapi.Key.generate_private_key () in
-  Printf.printf "key: %s\n" (Wglib.Wgapi.Key.to_base64_string (K.generate_public_key key));
-  Bpf_filter.attach_filter
-    ~sock
-    ~server_ip:(Core_unix.Inet_addr.of_string conf.server_endpoint)
-    ~server_port:conf.server_port
-    ~wg_port:51820;
+let fetch_peer_endpoint
+      ~server_key
+      ~hst_pub_key
+      ~hst_priv_key
+      ~dest_pub_key
+      sock
+      (conf : Config.t)
+  : R.t
+  =
   let packet =
     P.create
       ~source:51820
       ~dest_port:conf.server_port
-      ~hst_key:(K.generate_public_key key)
-      ~dest_key:(K.generate_public_key key)
+      ~hst_key:hst_pub_key
+      ~dest_key:dest_pub_key
       ~priv_key:
-        (key
+        (hst_priv_key
          |> K.to_string
          |> Wg_nat.Crypto.X25519.secret_of_octets ~compress:false
          |> Result.ok
@@ -54,8 +54,7 @@ let main server_key (conf : Config.t) =
          |> fst)
       ~pub_key:server_key
   in
-  Printf.sprintf "MAC: %s\n" (P.copy_t_mac packet |> Base64.encode_string)
-  |> print_endline;
+  P.hexdump_t packet;
   let bytes_sent =
     Wg_nat.Request.RawUdpSock.send
       sock
@@ -70,19 +69,48 @@ let main server_key (conf : Config.t) =
   Printf.printf "Recieved: %d Bytes\n" recieved;
   let reply = R.of_bytes ~hdr:true reply in
   R.hexdump_t reply;
-  Wgctrl.update_peer
-    wg_intrf
-    key
-    (R.get_t_addr reply |> Option.value_exn)
-    (R.get_t_port reply)
-  |> ignore
+  reply
 ;;
 
-(* Wgctrl.update_peer wg_intrf key () *)
+let main server_key (conf : Config.t) =
+  let wg_intrf = Wgctrl.get_wg_intrf conf in
+  let priv_key = wg_intrf.private_key |> Option.value_exn in
+  let dest_keys = List.map ~f:(fun p -> p.public_key) wg_intrf.peers |> List.filter_opt in
+  List.iter dest_keys ~f:(fun dest_key ->
+    Logs.info (fun m -> m "Query Peer:%s\n" (K.to_base64_string dest_key));
+    let pub_key = wg_intrf.public_key |> Option.value_exn in
+    let sock = Wg_nat.Request.RawUdpSock.init () in
+    Bpf_filter.attach_filter
+      ~sock
+      ~server_ip:(Core_unix.Inet_addr.of_string conf.server_endpoint)
+      ~server_port:conf.server_port
+      ~wg_port:conf.wg_port;
+    let reply =
+      fetch_peer_endpoint
+        ~server_key
+        ~hst_pub_key:pub_key
+        ~hst_priv_key:priv_key
+        ~dest_pub_key:dest_key
+        sock
+        conf
+    in
+    match R.get_t_found reply |> R.int_to_found with
+    | Some R.Found ->
+      Wgctrl.update_peer
+        wg_intrf
+        pub_key
+        (R.get_t_addr reply |> Option.value_exn)
+        (R.get_t_port reply)
+      |> ignore
+    | Some R.Not_Found -> Logs.info (fun m -> m "Not found")
+    | None -> Logs.info (fun m -> m "Invalid Response"))
+;;
 
 let tofu = Tofu.read_known_servers ()
 
 let () =
+  Logs.set_level (Some Logs.Info);
+  Logs.set_reporter (Logs.format_reporter ());
   Eio_main.run
   @@ fun env ->
   (* Initialize random number generator *)
