@@ -27,6 +27,7 @@ let handle_packet t (packet : Req.t) ~client_addr ~client_port =
   Hashtbl.find t dest_key |> Option.bind ~f:(fun c -> Some (c.endpoint, c.port))
 ;;
 
+(* TODO: *)
 let cleanup (t : t) max_age =
   let now_f = Time_float.now () in
   Hashtbl.filter_inplace t ~f:(fun c ->
