@@ -9,7 +9,24 @@ type client =
 
 type t = (string, client) M.hashtbl
 
-let create () : t = M.create ()
+let create () : t =
+  let t = M.create () in
+  let c : client =
+    { endpoint = Ipaddr.of_string_exn "127.0.0.1"
+    ; port = 5280
+    ; last_seen = Time_float.now ()
+    }
+  in
+  Hashtbl.set
+    t
+    ~key:
+      (Wglib.Wgapi.Key.of_base64_string "MYaTPEhxXQANDdHW9lPdJ4D4Yrbrk4PPP/v9X6BQ+hc="
+       |> Stdlib.Result.get_ok
+       |> Wglib.Wgapi.Key.to_string)
+    ~data:c;
+  t
+;;
+
 let update (t : t) key c = Hashtbl.set t ~key ~data:c
 let get t key = Hashtbl.find t key
 

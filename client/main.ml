@@ -98,10 +98,16 @@ let main server_key (conf : Config.t) =
     | Some R.Found ->
       Wgctrl.update_peer
         wg_intrf
-        pub_key
+        dest_key
         (R.get_t_addr reply |> Option.value_exn)
         (R.get_t_port reply)
-      |> ignore
+      |> (function
+       | Ok () -> ()
+       | Error err ->
+         Logs.warn (fun m ->
+           m
+             "Failed to set wg interface: %s"
+             (Wglib.Wgapi.Interface.DeviceError.to_string err)))
     | Some R.Not_Found -> Logs.info (fun m -> m "Not found")
     | None -> Logs.info (fun m -> m "Invalid Response"))
 ;;

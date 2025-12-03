@@ -40,10 +40,16 @@ let get_wg_intrf (conf : Config.t) =
     interface
 ;;
 
-let update_peer wg_intrf public_key (endpoint : Ipaddr.t) port =
+let update_peer wg_intrf public_key (addr : Ipaddr.t) port =
+  Logs.info (fun m ->
+    m
+      "Updating Peer: %s to endpoint: %a"
+      (Wglib.Wgapi.Key.to_base64_string public_key)
+      Ipaddr.pp
+      addr);
   let open Wglib.Wgapi in
   let endpoint =
-    match endpoint with
+    match addr with
     | Ipaddr.V4 ip ->
       let endpoint : Endpoint.t = { addr = `V4 ip; port } in
       endpoint
@@ -54,3 +60,5 @@ let update_peer wg_intrf public_key (endpoint : Ipaddr.t) port =
   let peer = Peer.create ~endpoint ~persistent_keepalive_interval:25 ~public_key () in
   Interface.set_peers wg_intrf [ peer ]
 ;;
+
+(* TODO: add peers *)
