@@ -35,9 +35,10 @@ let fetch_peer_endpoint
       ~hst_pub_key
       ~hst_priv_key
       ~dest_pub_key
-      sock
+      ~sock
+      ~clock
       (conf : Config.t)
-  : R.t
+  : R.t Option.t
   =
   let packet =
     P.create
@@ -65,14 +66,25 @@ let fetch_peer_endpoint
   in
   Printf.printf "Bytes Sent: %d\n" bytes_sent;
   let reply = R.create_buffer ~hdr:true () in
-  let recieved = Core_unix.recv sock ~buf:reply ~pos:0 ~len:R.sizeof_t ~mode:[] in
-  Printf.printf "Recieved: %d Bytes\n" recieved;
-  let reply = R.of_bytes ~hdr:true reply in
-  R.hexdump_t reply;
-  reply
+  match
+    Eio.Time.with_timeout clock 2.0 (fun () ->
+      Ok (Core_unix.recv sock ~buf:reply ~pos:0 ~len:R.sizeof_t ~mode:[]))
+  with
+  | Error `Timeout -> None
+  | Ok recieved ->
+    (* let recieved = Core_unix.recv sock ~buf:reply ~pos:0 ~len:R.sizeof_t ~mode:[] in *)
+    Printf.printf "Recieved: %d Bytes\n" recieved;
+    let reply = R.of_bytes ~hdr:true reply in
+    R.hexdump_t reply;
+    (match R.get_t_found reply |> R.int_to_found with
+     | None ->
+       Logs.info (fun m -> m "Invalid Response");
+       None
+     | Some R.Not_Found -> None
+     | Some R.Found -> Some reply)
 ;;
 
-let main server_key (conf : Config.t) =
+let main server_key (conf : Config.t) ~clock =
   let wg_intrf = Wgctrl.get_wg_intrf conf in
   let priv_key = wg_intrf.private_key |> Option.value_exn in
   let dest_keys = List.map ~f:(fun p -> p.public_key) wg_intrf.peers |> List.filter_opt in
@@ -91,11 +103,12 @@ let main server_key (conf : Config.t) =
         ~hst_pub_key:pub_key
         ~hst_priv_key:priv_key
         ~dest_pub_key:dest_key
-        sock
+        ~sock
+        ~clock
         conf
     in
-    match R.get_t_found reply |> R.int_to_found with
-    | Some R.Found ->
+    match reply with
+    | Some reply ->
       Wgctrl.update_peer
         wg_intrf
         dest_key
@@ -108,7 +121,6 @@ let main server_key (conf : Config.t) =
            m
              "Failed to set wg interface: %s"
              (Wglib.Wgapi.Interface.DeviceError.to_string err)))
-    | Some R.Not_Found -> Logs.info (fun m -> m "Not found")
     | None -> Logs.info (fun m -> m "Invalid Response"))
 ;;
 
@@ -124,10 +136,10 @@ let () =
   let conf = get_config () in
   let net : Eio_unix.Net.t = (Eio.Stdenv.net env :> Eio_unix.Net.t) in
   let clock = Eio.Stdenv.clock env in
-  let key = get_key ~net ~clock conf |> Option.value_exn in
+  let key = get_key ~net ~clock conf |> Option.value_exn ~message:"Dns not reachable" in
   let tofu, authed = Tofu.authenticate tofu Tofu.{ key; endpoint = "127.0.0.1", 5354 } in
   Tofu.write_known_servers tofu;
   match authed with
-  | true -> main key conf
-  | false -> print_endline "Server not authenticated"
+  | true -> main key conf ~clock
+  | false -> Logs.err @@ fun m -> m "Server not authenticated"
 ;;

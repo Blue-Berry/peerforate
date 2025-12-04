@@ -4,14 +4,12 @@ module R = Wg_nat.Reply.Packet
 module K = Wglib.Wgapi.Key
 
 (* TODO: *)
-(*   - Track Clients: public key, timestamp, address *)
-(*   - timeout for clients, lazy cleanup + periodic cleanup *)
+(*   - Timeout for clients, lazy cleanup + periodic cleanup *)
 (*   - Authenticate client before tracking *)
 (*   - Prevent DoS *)
 (*   - Refactor *)
 (*   - Add tests *)
 (*   - Switch to ipv6 *)
-(* add timeouit for client recv  *)
 
 let get_config () =
   Config.read_server_config ()
