@@ -41,7 +41,10 @@ let handle_packet t (packet : Req.t) ~client_addr ~client_port =
   in
   update t hst_key client;
   let dest_key = Req.copy_t_dest_key packet in
-  Hashtbl.find t dest_key |> Option.bind ~f:(fun c -> Some (c.endpoint, c.port))
+  Hashtbl.find t dest_key
+  |> Option.bind ~f:(fun c ->
+    let age = Time_float.(abs_diff (now ()) c.last_seen) in
+    if Time_float.Span.(of_int_min 20 < age) then None else Some (c.endpoint, c.port))
 ;;
 
 (* TODO: *)
