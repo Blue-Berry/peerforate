@@ -1,6 +1,8 @@
 open Core
 module M = Hashtbl.Make (String)
 
+let max_age_m = 20
+
 type client =
   { endpoint : Ipaddr.t
   ; port : int
@@ -44,13 +46,15 @@ let handle_packet t (packet : Req.t) ~client_addr ~client_port =
   Hashtbl.find t dest_key
   |> Option.bind ~f:(fun c ->
     let age = Time_float.(abs_diff (now ()) c.last_seen) in
-    if Time_float.Span.(of_int_min 20 < age) then None else Some (c.endpoint, c.port))
+    if Time_float.Span.(of_int_min max_age_m < age)
+    then None
+    else Some (c.endpoint, c.port))
 ;;
 
 (* TODO: *)
-let cleanup (t : t) max_age =
+let cleanup (t : t) =
   let now_f = Time_float.now () in
   Hashtbl.filter_inplace t ~f:(fun c ->
     let age = Time_float.(abs_diff now_f c.last_seen) in
-    Time_float.Span.(age < max_age))
+    Time_float.Span.(age < of_int_min max_age_m))
 ;;

@@ -1,0 +1,29 @@
+(executable
+ (public_name packet_filter_example)
+ (name packet_filter)
+ (libraries libbpf libbpf_maps ctypes ctypes.foreign unix))
+
+; Build rule to compile the eBPF kernel program
+(rule
+ (mode
+  (promote (until-clean)))
+ (targets packet_filter.bpf.o)
+ (deps arch vmlinux.h packet_filter.bpf.c packet_filter.h)
+ (action
+  (bash
+   "clang -g -O2 -target bpf -D__TARGET_ARCH_$(cat arch) -I${LIBBPF_INCLUDE:-/usr/include} -c packet_filter.bpf.c -o packet_filter.bpf.o")))
+
+; Generate vmlinux.h from BTF and detect architecture
+(rule
+ (mode
+  (promote (until-clean)))
+ (targets vmlinux.h arch)
+ (action
+  (progn
+   (with-stdout-to
+    vmlinux.h
+     (run bpftool btf dump file /sys/kernel/btf/vmlinux format c))
+   (with-stdout-to
+    arch
+    (bash
+     "uname -m | sed 's/x86_64/x86/' | sed 's/arm.*/arm/' | sed 's/aarch64/arm64/' | sed 's/ppc64le/powerpc/' | sed 's/mips.*/mips/' | sed 's/riscv64/riscv/' | sed 's/loongarch64/loongarch/'")))))

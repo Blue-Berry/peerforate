@@ -46,6 +46,17 @@
             pkgs.libbpf
           ];
         };
+        libbpf_maps = ocamlPackages.buildDunePackage rec {
+          pname = "libbpf_maps";
+          version = "";
+          src = inputs.libbpf-src;
+          propagatedBuildInputs = with ocamlPackages; [
+            libbpf
+            ctypes
+            ctypes-foreign
+            pkgs.libffi
+          ];
+        };
       in {
         devShells = {
           default = mkShell {
@@ -55,6 +66,15 @@
               ocamlformat
               ocaml-lsp
             ];
+            nativeBuildInputs = with pkgs; [
+              bpftools      # For bpftool to generate vmlinux.h
+              llvmPackages.clang-unwrapped  # Unwrapped clang for BPF compilation
+              llvm          # For BPF target
+              libbpf        # For BPF headers (bpf_helpers.h etc)
+            ];
+            shellHook = ''
+              export LIBBPF_INCLUDE="${pkgs.libbpf}/include"
+            '';
           };
         };
 
@@ -75,7 +95,8 @@
               ctypes-foreign
               ipaddr
               pkgs.libffi
-              # libbpf
+              libbpf
+              libbpf_maps
               mirage-crypto-ec
               mirage-crypto-rng
               dns

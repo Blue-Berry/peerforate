@@ -21,4 +21,4 @@ val handle_packet
   -> client_port:int
   -> (Ipaddr.t * int) option
 
-val cleanup : t -> Core.Time_float.Span.t -> unit
+val cleanup : t -> unit
