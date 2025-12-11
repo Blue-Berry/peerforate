@@ -4,13 +4,17 @@ open Ctypes
 open Libbpf
 open Libbpf_maps
 
-type callback = dst_ip:string -> timestamp:int64 -> unit
+type callback = dst_ip:Ipaddr.t -> timestamp:int64 -> unit
 
+(* Event structure matching packet_filter.h *)
 let packet_event : [ `Packet_event ] structure typ = structure "packet_event"
-let ev_dst_ip = field packet_event "dst_ip" uint32_t
+let ev_dst_ip = field packet_event "dst_ip" (array 16 uint8_t)
+let ev_version = field packet_event "version" uint32_t
+let _ = field packet_event "_pad" uint32_t (* padding *)
 let ev_ts = field packet_event "ts" uint64_t
 let () = seal packet_event
 
+(* Find BPF object file *)
 let find_bpf_object () =
   let candidates =
     [ Filename.concat (Filename.dirname Sys.executable_name) "packet_filter.bpf.o"
@@ -23,21 +27,34 @@ let find_bpf_object () =
   | None -> failwith "Cannot find packet_filter.bpf.o"
 ;;
 
-let parse_ip_to_uint32 ip_str =
-  match String.split_on_char '.' ip_str |> List.map int_of_string with
-  | [ a; b; c; d ] ->
-    Unsigned.UInt32.of_int (a lor (b lsl 8) lor (c lsl 16) lor (d lsl 24))
-  | _ -> failwith ("Invalid IP address: " ^ ip_str)
-;;
-
-let ip_to_string ip =
-  let ip = Unsigned.UInt32.to_int32 ip in
-  Printf.sprintf
-    "%ld.%ld.%ld.%ld"
-    Int32.(logand ip 0xFFl)
-    Int32.(logand (shift_right_logical ip 8) 0xFFl)
-    Int32.(logand (shift_right_logical ip 16) 0xFFl)
-    Int32.(logand (shift_right_logical ip 24) 0xFFl)
+(* IP helpers *)
+let ip_of_event ev =
+  let version = getf ev ev_version |> Unsigned.UInt32.to_int in
+  let bytes = getf ev ev_dst_ip in
+  if version == 4
+  then (
+    (* IPv4: bytes 0-3 *)
+    let b0 = Unsigned.UInt8.to_int (CArray.get bytes 0) in
+    let b1 = Unsigned.UInt8.to_int (CArray.get bytes 1) in
+    let b2 = Unsigned.UInt8.to_int (CArray.get bytes 2) in
+    let b3 = Unsigned.UInt8.to_int (CArray.get bytes 3) in
+    let ip =
+      Int32.(
+        logor
+          (shift_left (of_int b0) 24)
+          (logor
+             (shift_left (of_int b1) 16)
+             (logor (shift_left (of_int b2) 8) (of_int b3))))
+    in
+    Ipaddr.V4 (Ipaddr.V4.of_int32 ip))
+  else (
+    (* IPv6: all 16 bytes *)
+    let s =
+      String.init 16 (fun i -> Char.chr (Unsigned.UInt8.to_int (CArray.get bytes i)))
+    in
+    match Ipaddr.V6.of_octets s with
+    | Ok v6 -> Ipaddr.V6 v6
+    | Error _ -> failwith "Invalid IPv6 bytes from BPF")
 ;;
 
 (* Get interface index *)
@@ -67,6 +84,8 @@ let setup ~interface ~target_ips ?debounce_ms () =
     tc_opts
     C.Types.Bpf_tc.Opts.sz
     (Unsigned.Size_t.of_int (sizeof C.Types.Bpf_tc.Opts.t));
+  (* Try to clean up existing hook first to avoid conflicts *)
+  ignore (C.Functions.bpf_tc_hook_destroy (addr tc_hook));
   (* Load BPF *)
   let obj = bpf_object_open (find_bpf_object ()) in
   let cleanup ~hook_created =
@@ -76,13 +95,39 @@ let setup ~interface ~target_ips ?debounce_ms () =
   in
   try
     bpf_object_load obj;
-    (* Add all target IPs to the hash map *)
-    let ips_map = bpf_object_find_map_by_name obj "target_ips" in
+    (* Add target IPs to appropriate maps *)
+    let map_v4 = bpf_object_find_map_by_name obj "target_ips_v4" in
+    let map_v6 = bpf_object_find_map_by_name obj "target_ips_v6" in
     let dummy = Unsigned.UInt8.one in
     List.iter
-      (fun ip_str ->
-         let ip = parse_ip_to_uint32 ip_str in
-         bpf_map_update_elem ~key_ty:uint32_t ~val_ty:uint8_t ips_map ip dummy)
+      (fun ip ->
+         match ip with
+         | Ipaddr.V4 v4 ->
+           let bytes = Ipaddr.V4.to_octets v4 in
+           let int_val =
+             let b i = Char.code bytes.[i] in
+             Int32.(
+               logor
+                 (shift_left (of_int (b 3)) 24)
+                 (logor
+                    (shift_left (of_int (b 2)) 16)
+                    (logor (shift_left (of_int (b 1)) 8) (of_int (b 0)))))
+           in
+           let uint32_val = Unsigned.UInt32.of_int32 int_val in
+           bpf_map_update_elem ~key_ty:uint32_t ~val_ty:uint8_t map_v4 uint32_val dummy
+         | Ipaddr.V6 v6 ->
+           (* Convert 16 bytes string to CArray for BPF map *)
+           let bytes = Ipaddr.V6.to_octets v6 in
+           let key_arr = CArray.make uint8_t 16 in
+           for i = 0 to 15 do
+             CArray.set key_arr i (Unsigned.UInt8.of_int (Char.code bytes.[i]))
+           done;
+           bpf_map_update_elem
+             ~key_ty:(array 16 uint8_t)
+             ~val_ty:uint8_t
+             map_v6
+             key_arr
+             dummy)
       target_ips;
     (* Configure debounce *)
     let debounce_map = bpf_object_find_map_by_name obj "debounce_config" in
@@ -110,7 +155,7 @@ let start ~interface ~target_ips ?debounce_ms ~stop callback =
   let handle_event _ctx data _sz =
     let ev = !@(from_voidp packet_event data) in
     callback
-      ~dst_ip:(ip_to_string (getf ev ev_dst_ip))
+      ~dst_ip:(ip_of_event ev)
       ~timestamp:(Unsigned.UInt64.to_int64 (getf ev ev_ts));
     0
   in
@@ -132,7 +177,7 @@ let start_eio ~sw ~interface ~target_ips ?debounce_ms callback =
   let handle_event _ctx data _sz =
     let ev = !@(from_voidp packet_event data) in
     callback
-      ~dst_ip:(ip_to_string (getf ev ev_dst_ip))
+      ~dst_ip:(ip_of_event ev)
       ~timestamp:(Unsigned.UInt64.to_int64 (getf ev ev_ts));
     0
   in

@@ -2,10 +2,12 @@
 #ifndef __PACKET_FILTER_H
 #define __PACKET_FILTER_H
 
-/* Minimal event - just destination IP and timestamp */
+/* Event sent from kernel to userspace when a matching packet is detected */
 struct packet_event {
-    unsigned int dst_ip;
-    unsigned long long ts;
+    unsigned char dst_ip[16]; /* IPv4 or IPv6 address */
+    unsigned int version;     /* 4 or 6 */
+    unsigned int _pad;        /* padding for alignment */
+    unsigned long long ts;    /* Timestamp in nanoseconds */
 };
 
 #endif

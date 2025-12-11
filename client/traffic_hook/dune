@@ -1,7 +1,15 @@
 (library
  (name traffic_hook)
  (modules traffic_hook)
- (libraries libbpf libbpf_maps ctypes ctypes.foreign unix eio eio_main))
+ (libraries
+  libbpf
+  libbpf_maps
+  ctypes
+  ctypes.foreign
+  unix
+  eio
+  eio_main
+  ipaddr))
 
 (executable
  (public_name packet_filter_example)
@@ -10,6 +18,7 @@
  (libraries traffic_hook))
 
 ; Build rule to compile the eBPF kernel program
+
 (rule
  (mode
   (promote (until-clean)))
@@ -20,6 +29,7 @@
    "clang -g -O2 -target bpf -D__TARGET_ARCH_$(cat arch) -I${LIBBPF_INCLUDE:-/usr/include} -c packet_filter.bpf.c -o packet_filter.bpf.o")))
 
 ; Generate vmlinux.h from BTF and detect architecture
+
 (rule
  (mode
   (promote (until-clean)))

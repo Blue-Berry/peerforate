@@ -1,7 +1,7 @@
 (** Traffic Hook - Monitor egress packets to specific IP addresses using eBPF *)
 
 (** Callback invoked when a packet to a target IP is detected *)
-type callback = dst_ip:string -> timestamp:int64 -> unit
+type callback = dst_ip:Ipaddr.t -> timestamp:int64 -> unit
 
 (** [start ~interface ~target_ips ?debounce_ms ~stop callback] monitors egress 
     packets on [interface] destined for any IP in [target_ips]. Blocks until 
@@ -11,14 +11,14 @@ type callback = dst_ip:string -> timestamp:int64 -> unit
     debounce timer.
     
     @param interface Network interface name (e.g., "wg0", "eth0")
-    @param target_ips List of target IP addresses in dotted notation
+    @param target_ips List of target IP addresses
     @param debounce_ms Optional debounce interval in milliseconds (per IP)
     @param stop Reference that when set to [true] stops the monitor
     @param callback Function called when matching packet detected
     @raise Failure if interface not found, BPF load fails, or attach fails *)
 val start
   :  interface:string
-  -> target_ips:string list
+  -> target_ips:Ipaddr.t list
   -> ?debounce_ms:int
   -> stop:bool ref
   -> callback
@@ -32,14 +32,14 @@ val start
     
     @param sw Eio switch that controls the lifetime of the hook
     @param interface Network interface name (e.g., "wg0", "eth0")
-    @param target_ips List of target IP addresses in dotted notation
+    @param target_ips List of target IP addresses
     @param debounce_ms Optional debounce interval in milliseconds (per IP)
     @param callback Function called when matching packet detected
     @raise Failure if interface not found, BPF load fails, or attach fails *)
 val start_eio
   :  sw:Eio.Switch.t
   -> interface:string
-  -> target_ips:string list
+  -> target_ips:Ipaddr.t list
   -> ?debounce_ms:int
   -> callback
   -> unit
