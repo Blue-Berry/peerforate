@@ -78,30 +78,46 @@ end
 
 module Allowed_ip = struct
   open Ctypes
-  module Ip = Ipaddr
 
-  type t =
-    { ip : Ip.t
-    ; cidr : Unsigned.UInt8.t
-    }
+  type t = Ipaddr.Prefix.t
+
+  let prefix_bits (p : t) =
+    match p with
+    | Ipaddr.V4 p -> Ipaddr.V4.Prefix.bits p
+    | Ipaddr.V6 p -> Ipaddr.V6.Prefix.bits p
+  ;;
+
+  let prefix_network (p : t) =
+    match p with
+    | Ipaddr.V4 p -> Ipaddr.V4 (Ipaddr.V4.Prefix.network p)
+    | Ipaddr.V6 p -> Ipaddr.V6 (Ipaddr.V6.Prefix.network p)
+  ;;
+
+  let prefix_make cidr ip =
+    match ip with
+    | Ipaddr.V4 ip -> Ipaddr.V4 (Ipaddr.V4.Prefix.make cidr ip)
+    | Ipaddr.V6 ip -> Ipaddr.V6 (Ipaddr.V6.Prefix.make cidr ip)
+  ;;
 
   let to_wg_allowed_ip allowed_ip =
+    let ip = prefix_network allowed_ip in
+    let cidr = prefix_bits allowed_ip in
     let family =
-      match allowed_ip.ip with
-      | Ip.V4 _ -> af_inet
-      | Ip.V6 _ -> af_inet6
+      match ip with
+      | Ipaddr.V4 _ -> af_inet
+      | Ipaddr.V6 _ -> af_inet6
     in
     let callowed_ip = make Wg_peer.AllowedIp.wg_allowedip in
     setf callowed_ip Wg_peer.AllowedIp.family (Unsigned.UInt16.of_int family);
-    setf callowed_ip Wg_peer.AllowedIp.cidr allowed_ip.cidr;
+    setf callowed_ip Wg_peer.AllowedIp.cidr (Unsigned.UInt8.of_int cidr);
     (* Set the ip of the allowed ip c struct *)
     let () =
-      match allowed_ip.ip with
-      | Ip.V4 ip ->
+      match ip with
+      | Ipaddr.V4 ip ->
         let addr = make Wg_peer.AllowedIp.in_addr in
         (* Reverse the octets of the ip *)
         (* TODO: figure out which way to flip oc tects is faster *)
-        let ip_octets = Ip.V4.to_octets ip |> Base.String.to_array in
+        let ip_octets = Ipaddr.V4.to_octets ip |> Base.String.to_array in
         let ip_uint32 =
           Base.Array.fold_right
             ~init:Unsigned.UInt32.zero
@@ -112,17 +128,17 @@ module Allowed_ip = struct
             ip_octets
         in
         (* let ip_uint32 = *)
-        (*   Ip.V4.to_octets ip |> Base.String.to_list_rev |> Base.String.of_list *)
-        (* |> Ip.V4.of_octets_exn *)
+        (*   Ipaddr.V4.to_octets ip |> Base.String.to_list_rev |> Base.String.of_list *)
+        (* |> Ipaddr.V4.of_octets_exn *)
         (* in *)
         setf addr Wg_peer.AllowedIp.s_addr ip_uint32;
         let ip = make Wg_peer.AllowedIp.ip_union in
         setf ip Wg_peer.AllowedIp.ip4 addr;
         setf callowed_ip Wg_peer.AllowedIp.ip ip
-      | Ip.V6 ip ->
+      | Ipaddr.V6 ip ->
         let addr = make Wg_peer.AllowedIp.in6_addr in
         let ip_buf = Buffer.create 16 in
-        Ip.V6.to_buffer ip_buf ip;
+        Ipaddr.V6.to_buffer ip_buf ip;
         Array.iteri
           (fun i c ->
              setf addr c (Buffer.nth ip_buf i |> Base.Char.to_int |> Unsigned.UChar.of_int))
@@ -137,14 +153,14 @@ module Allowed_ip = struct
   let of_wg_allowed_ip allowed_ip : t =
     let allowed_ip = !@allowed_ip in
     let family = getf allowed_ip Wg_peer.AllowedIp.family |> Unsigned.UInt16.to_int in
-    let cidr = getf allowed_ip Wg_peer.AllowedIp.cidr in
+    let cidr = getf allowed_ip Wg_peer.AllowedIp.cidr |> Unsigned.UInt8.to_int in
     let ip_union = getf allowed_ip Wg_peer.AllowedIp.ip in
-    let ip : Ip.t =
+    let ip : Ipaddr.t =
       match family with
       | x when x == af_inet ->
         let addr = getf ip_union Wg_peer.AllowedIp.ip4 in
         let ip = getf addr Wg_peer.AllowedIp.s_addr |> Unsigned.UInt32.to_int32 in
-        Ip.V4 (Ip.V4.of_int32 ip)
+        Ipaddr.V4 (Ipaddr.V4.of_int32 ip)
       | x when x == af_inet6 ->
         let addr = getf ip_union Wg_peer.AllowedIp.ip6 in
         let ip_buf = Buffer.create 16 in
@@ -154,11 +170,11 @@ module Allowed_ip = struct
                ip_buf
                (getf addr c |> Unsigned.UChar.to_int |> Base.Char.of_int_exn))
           Wg_peer.AllowedIp.s6_addr;
-        let ip = Ip.V6.of_octets_exn (ip_buf |> Buffer.to_seq |> String.of_seq) in
-        Ip.V6 ip
+        let ip = Ipaddr.V6.of_octets_exn (ip_buf |> Buffer.to_seq |> String.of_seq) in
+        Ipaddr.V6 ip
       | x -> failwith ("Invalid family: " ^ (x |> Int.to_string))
     in
-    { ip; cidr }
+    prefix_make cidr ip
   ;;
 
   let set_next_allowedip allowed_ip next =

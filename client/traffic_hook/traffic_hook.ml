@@ -6,7 +6,6 @@ open Libbpf_maps
 
 type callback = dst_ip:Ipaddr.t -> timestamp:int64 -> unit
 
-(* Event structure matching packet_filter.h *)
 let packet_event : [ `Packet_event ] structure typ = structure "packet_event"
 let ev_dst_ip = field packet_event "dst_ip" (array 16 uint8_t)
 let ev_version = field packet_event "version" uint32_t
@@ -27,7 +26,6 @@ let find_bpf_object () =
   | None -> failwith "Cannot find packet_filter.bpf.o"
 ;;
 
-(* IP helpers *)
 let ip_of_event ev =
   let version = getf ev ev_version |> Unsigned.UInt32.to_int in
   let bytes = getf ev ev_dst_ip in
@@ -57,7 +55,6 @@ let ip_of_event ev =
     | Error _ -> failwith "Invalid IPv6 bytes from BPF")
 ;;
 
-(* Get interface index *)
 let get_ifindex ifname =
   let if_nametoindex = Foreign.foreign "if_nametoindex" (string @-> returning uint) in
   let idx = if_nametoindex ifname |> Unsigned.UInt.to_int in

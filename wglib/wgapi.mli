@@ -16,12 +16,7 @@ module Key : sig
 end
 
 module Allowed_ip : sig
-  module Ip = Ipaddr
-
-  type t =
-    { ip : Ip.t
-    ; cidr : Unsigned.uint8
-    }
+  type t = Ipaddr.Prefix.t
 end
 
 module Endpoint : sig
