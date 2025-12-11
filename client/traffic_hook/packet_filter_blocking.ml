@@ -1,4 +1,4 @@
-(* Example using Traffic_hook library *)
+(* Example using Traffic_hook library with blocking API *)
 
 let () =
   if Array.length Sys.argv < 3

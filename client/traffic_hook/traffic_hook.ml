@@ -116,6 +116,10 @@ let setup ~interface ~target_subnets ?debounce_ms () =
            for i = 0 to 3 do
              CArray.set key_arr (4 + i) (Unsigned.UInt8.of_int (Char.code octets.[i]))
            done;
+           Printf.eprintf
+             "Traffic_hook: Updating map for %s/%d\n%!"
+             (Ipaddr.V4.to_string ip)
+             cidr;
            bpf_map_update_elem
              ~key_ty:(array 8 uint8_t)
              ~val_ty:uint8_t
@@ -188,6 +192,7 @@ let start_eio ~sw ~interface ~target_subnets ?debounce_ms callback =
   (* Register cleanup with switch *)
   Eio.Switch.on_release sw cleanup;
   let handle_event _ctx data _sz =
+    Printf.eprintf "Traffic_hook: event received\n%!";
     let ev = !@(from_voidp packet_event data) in
     callback
       ~dst_ip:(ip_of_event ev)
@@ -196,11 +201,16 @@ let start_eio ~sw ~interface ~target_subnets ?debounce_ms callback =
   in
   (* Poll loop - check for cancellation between polls *)
   RingBuffer.init events_map ~callback:handle_event (fun rb ->
+    let fd = RingBuffer.get_epoll_fd rb in
+    (* Wrap raw FD into Eio FD *)
+    let unix_fd = (Obj.magic fd : Unix.file_descr) in
     try
       while true do
         Eio.Fiber.check ();
-        (* Check if switch was cancelled *)
-        ignore (RingBuffer.poll rb ~timeout:100)
+        (* Wait until data is available *)
+        Eio_unix.await_readable unix_fd;
+        (* Process available events non-blocking *)
+        ignore (RingBuffer.consume rb)
       done
     with
     | Eio.Cancel.Cancelled _ -> ())

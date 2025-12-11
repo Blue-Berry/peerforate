@@ -21,12 +21,13 @@ val start
   -> callback
   -> unit
 
-(** [start_eio ~sw ~interface ~target_subnets ?debounce_ms callback] monitors egress 
+(** [start_eio ~clock ~sw ~interface ~target_subnets ?debounce_ms callback] monitors egress 
     packets using Eio. Runs until the switch [sw] is cancelled or turned off.
     
     This integrates with Eio's structured concurrency - the hook is automatically
     cleaned up when the switch ends.
     
+    @param clock Eio clock for polling intervals
     @param sw Eio switch that controls the lifetime of the hook
     @param interface Network interface name (e.g., "wg0", "eth0")
     @param target_subnets List of target subnets in CIDR notation

@@ -143,7 +143,7 @@ int packet_filter_egress(struct __sk_buff *ctx) {
         struct ipv4_lpm_key lpm_key = { .prefixlen = 32, .data = ip4->daddr };
         exists = bpf_map_lookup_elem(&target_ips_v4, &lpm_key);
         if (!exists) {
-             // bpf_printk("IP %x not in map", bpf_ntohl(ip4->daddr));
+             bpf_printk("IP %x not in map", bpf_ntohl(ip4->daddr));
              return TC_ACT_OK;
         }
 

@@ -86,6 +86,10 @@ let update_peer
 
 let callback ~clock ~(wg_intrf : Wg.Interface.t) ~(conf : Config.t) ~server_key ~map =
   fun ~(dst_ip : Ipaddr.t) ~(timestamp : int64) ->
+  Eio.traceln
+    "%s: Traffic monitor callback. dest ip: %s"
+    (Ipaddr.to_string dst_ip)
+    (Int64.to_string timestamp);
   match Allowed_ip_map.find map dst_ip with
   | None -> ()
   | Some dst_key ->
@@ -100,19 +104,8 @@ let callback ~clock ~(wg_intrf : Wg.Interface.t) ~(conf : Config.t) ~server_key 
 let start ~sw ~clock ~(wg_intrf : Wg.Interface.t) ~conf ~server_key =
   let map = Allowed_ip_map.of_interface wg_intrf in
   Eio.traceln
-    "Peers: %s"
-    (List.map wg_intrf.peers ~f:(fun p ->
-       Wg.Key.to_base64_string (Option.value_exn p.public_key))
-     |> String.concat ~sep:", ");
-  Eio.traceln
-    "Allowed Ips: %s"
-    (let p = wg_intrf.peers |> List.hd_exn in
-     List.map p.allowed_ips ~f:Ipaddr.Prefix.to_string |> String.concat ~sep:", ");
-  Eio.traceln "Map: %s" (Allowed_ip_map.to_sexp map |> Sexp.to_string_hum);
-  Eio.traceln
-    "Starting traffic monitor for allowed ips: %s"
-    (List.map (Allowed_ip_map.keys map) ~f:Ipaddr.Prefix.to_string
-     |> String.concat ~sep:", ");
+    "Starting traffic monitor : %s"
+    (Allowed_ip_map.to_sexp map |> Sexp.to_string_hum);
   let callback : Traffic_hook.callback =
     callback ~clock ~wg_intrf ~conf ~server_key ~map
   in

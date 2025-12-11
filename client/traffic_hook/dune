@@ -9,13 +9,18 @@
   unix
   eio
   eio_main
+  eio_linux
   ipaddr))
 
 (executable
- (public_name packet_filter_example)
- (name packet_filter)
- (modules packet_filter)
- (libraries traffic_hook))
+ (name packet_filter_blocking)
+ (modules packet_filter_blocking)
+ (libraries traffic_hook ipaddr))
+
+(executable
+ (name packet_filter_eio)
+ (modules packet_filter_eio)
+ (libraries traffic_hook ipaddr eio eio_main))
 
 ; Build rule to compile the eBPF kernel program
 

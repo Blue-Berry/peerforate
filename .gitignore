@@ -1,2 +1,3 @@
 .direnv
 _build
+client/traffic_hook/packet_filter.bpf.o
