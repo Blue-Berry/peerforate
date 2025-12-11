@@ -6,10 +6,11 @@ open Libbpf_maps
 
 type callback = dst_ip:Ipaddr.t -> timestamp:int64 -> unit
 
+(* Event structure matching packet_filter.h *)
 let packet_event : [ `Packet_event ] structure typ = structure "packet_event"
 let ev_dst_ip = field packet_event "dst_ip" (array 16 uint8_t)
 let ev_version = field packet_event "version" uint32_t
-let _ = field packet_event "_pad" uint32_t (* padding *)
+let _ = field packet_event "_pad" uint32_t
 let ev_ts = field packet_event "ts" uint64_t
 let () = seal packet_event
 
@@ -26,6 +27,7 @@ let find_bpf_object () =
   | None -> failwith "Cannot find packet_filter.bpf.o"
 ;;
 
+(* IP helpers *)
 let ip_of_event ev =
   let version = getf ev ev_version |> Unsigned.UInt32.to_int in
   let bytes = getf ev ev_dst_ip in
@@ -55,6 +57,7 @@ let ip_of_event ev =
     | Error _ -> failwith "Invalid IPv6 bytes from BPF")
 ;;
 
+(* Get interface index *)
 let get_ifindex ifname =
   let if_nametoindex = Foreign.foreign "if_nametoindex" (string @-> returning uint) in
   let idx = if_nametoindex ifname |> Unsigned.UInt.to_int in
@@ -62,7 +65,7 @@ let get_ifindex ifname =
 ;;
 
 (* Internal: setup and attach BPF, returns cleanup function *)
-let setup ~interface ~target_ips ?debounce_ms () =
+let setup ~interface ~target_subnets ?debounce_ms () =
   let ifindex = get_ifindex interface in
   let debounce_ns =
     match debounce_ms with
@@ -92,40 +95,53 @@ let setup ~interface ~target_ips ?debounce_ms () =
   in
   try
     bpf_object_load obj;
-    (* Add target IPs to appropriate maps *)
+    (* Add target subnets to appropriate LPM maps *)
     let map_v4 = bpf_object_find_map_by_name obj "target_ips_v4" in
     let map_v6 = bpf_object_find_map_by_name obj "target_ips_v6" in
     let dummy = Unsigned.UInt8.one in
     List.iter
-      (fun ip ->
-         match ip with
-         | Ipaddr.V4 v4 ->
-           let bytes = Ipaddr.V4.to_octets v4 in
-           let int_val =
-             let b i = Char.code bytes.[i] in
-             Int32.(
-               logor
-                 (shift_left (of_int (b 3)) 24)
-                 (logor
-                    (shift_left (of_int (b 2)) 16)
-                    (logor (shift_left (of_int (b 1)) 8) (of_int (b 0)))))
-           in
-           let uint32_val = Unsigned.UInt32.of_int32 int_val in
-           bpf_map_update_elem ~key_ty:uint32_t ~val_ty:uint8_t map_v4 uint32_val dummy
-         | Ipaddr.V6 v6 ->
-           (* Convert 16 bytes string to CArray for BPF map *)
-           let bytes = Ipaddr.V6.to_octets v6 in
-           let key_arr = CArray.make uint8_t 16 in
-           for i = 0 to 15 do
-             CArray.set key_arr i (Unsigned.UInt8.of_int (Char.code bytes.[i]))
+      (fun subnet ->
+         match subnet with
+         | Ipaddr.V4 prefix ->
+           let cidr = Ipaddr.V4.Prefix.bits prefix in
+           let ip = Ipaddr.V4.Prefix.network prefix in
+           (* Key: prefixlen (u32) + data (u32) = 8 bytes *)
+           let key_arr = CArray.make uint8_t 8 in
+           (* Write prefixlen (u32) at offset 0 *)
+           let p_ptr = coerce (ptr uint8_t) (ptr uint32_t) (CArray.start key_arr) in
+           p_ptr <-@ Unsigned.UInt32.of_int cidr;
+           (* Write IP (u32) at offset 4 *)
+           (* Ipaddr.V4.to_octets returns network order bytes string *)
+           let octets = Ipaddr.V4.to_octets ip in
+           for i = 0 to 3 do
+             CArray.set key_arr (4 + i) (Unsigned.UInt8.of_int (Char.code octets.[i]))
            done;
            bpf_map_update_elem
-             ~key_ty:(array 16 uint8_t)
+             ~key_ty:(array 8 uint8_t)
+             ~val_ty:uint8_t
+             map_v4
+             key_arr
+             dummy
+         | Ipaddr.V6 prefix ->
+           let cidr = Ipaddr.V6.Prefix.bits prefix in
+           let ip = Ipaddr.V6.Prefix.network prefix in
+           (* Key: prefixlen (u32) + data (16 bytes) = 20 bytes *)
+           let key_arr = CArray.make uint8_t 20 in
+           (* Write prefixlen (u32) at offset 0 *)
+           let p_ptr = coerce (ptr uint8_t) (ptr uint32_t) (CArray.start key_arr) in
+           p_ptr <-@ Unsigned.UInt32.of_int cidr;
+           (* Write IP (16 bytes) at offset 4 *)
+           let octets = Ipaddr.V6.to_octets ip in
+           for i = 0 to 15 do
+             CArray.set key_arr (4 + i) (Unsigned.UInt8.of_int (Char.code octets.[i]))
+           done;
+           bpf_map_update_elem
+             ~key_ty:(array 20 uint8_t)
              ~val_ty:uint8_t
              map_v6
              key_arr
              dummy)
-      target_ips;
+      target_subnets;
     (* Configure debounce *)
     let debounce_map = bpf_object_find_map_by_name obj "debounce_config" in
     bpf_map_update_elem ~key_ty:int ~val_ty:uint64_t debounce_map 0 debounce_ns;
@@ -147,8 +163,8 @@ let setup ~interface ~target_ips ?debounce_ms () =
     raise e
 ;;
 
-let start ~interface ~target_ips ?debounce_ms ~stop callback =
-  let events_map, cleanup = setup ~interface ~target_ips ?debounce_ms () in
+let start ~interface ~target_subnets ?debounce_ms ~stop callback =
+  let events_map, cleanup = setup ~interface ~target_subnets ?debounce_ms () in
   let handle_event _ctx data _sz =
     let ev = !@(from_voidp packet_event data) in
     callback
@@ -167,8 +183,8 @@ let start ~interface ~target_ips ?debounce_ms ~stop callback =
   cleanup ()
 ;;
 
-let start_eio ~sw ~interface ~target_ips ?debounce_ms callback =
-  let events_map, cleanup = setup ~interface ~target_ips ?debounce_ms () in
+let start_eio ~sw ~interface ~target_subnets ?debounce_ms callback =
+  let events_map, cleanup = setup ~interface ~target_subnets ?debounce_ms () in
   (* Register cleanup with switch *)
   Eio.Switch.on_release sw cleanup;
   let handle_event _ctx data _sz =

@@ -8,12 +8,15 @@ let () =
     exit 1);
   let interface = Sys.argv.(1) in
   let target_ips_str = String.split_on_char ',' Sys.argv.(2) in
-  let target_ips =
+  let target_subnets =
     List.map
       (fun s ->
-         match Ipaddr.of_string s with
-         | Ok ip -> ip
-         | Error (`Msg m) -> failwith ("Invalid IP: " ^ s ^ " (" ^ m ^ ")"))
+         match Ipaddr.Prefix.of_string s with
+         | Ok p -> p
+         | Error (`Msg m) ->
+           (match Ipaddr.of_string s with
+            | Ok ip -> Ipaddr.Prefix.of_addr ip
+            | Error _ -> failwith ("Invalid CIDR or IP: " ^ s ^ " (" ^ m ^ ")")))
       target_ips_str
   in
   let debounce_ms =
@@ -33,6 +36,6 @@ let () =
     Printf.printf "[%Ld] Packet to %s detected\n%!" timestamp (Ipaddr.to_string dst_ip)
   in
   Printf.printf "Press Ctrl-C to stop.\n%!";
-  Traffic_hook.start ~interface ~target_ips ?debounce_ms ~stop on_packet;
+  Traffic_hook.start ~interface ~target_subnets ?debounce_ms ~stop on_packet;
   Printf.printf "Done.\n%!"
 ;;
