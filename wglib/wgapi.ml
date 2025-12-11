@@ -10,8 +10,8 @@ let swap32 n =
   let b1 = logand (shift_right_logical n 8) 0xFFl in
   let b2 = logand (shift_right_logical n 16) 0xFFl in
   let b3 = logand (shift_right_logical n 24) 0xFFl in
-  logor (shift_left b0 24) (logor (shift_left b1 16) (logor (shift_left b2 8) b3))
-;;
+  logor (shift_left b0 24)
+    (logor (shift_left b1 16) (logor (shift_left b2 8) b3))
 
 module Key = struct
   open Ctypes
@@ -23,66 +23,69 @@ module Key = struct
     let key = CArray.make Ctypes_static.uchar 32 in
     let () = Array.iteri (fun i c -> CArray.set key i c) arr in
     key
-  ;;
 
   let generate_private_key () =
     let key = CArray.make Ctypes_static.uchar 32 in
     let () = wg_generate_private_key (CArray.start key) in
     key
-  ;;
 
   let generate_public_key private_key =
     let public_key = CArray.make Ctypes_static.uchar 32 in
     let () =
-      wg_generate_public_key (CArray.start public_key) (CArray.start private_key)
+      wg_generate_public_key
+        (CArray.start public_key)
+        (CArray.start private_key)
     in
     public_key
-  ;;
 
   let generate_preshared_key () =
     let key = CArray.make Ctypes_static.uchar 32 in
     let () = wg_generate_preshared_key (CArray.start key) in
     key
-  ;;
 
   let to_base64_string (key : t) =
     let base64 = CArray.make Ctypes_static.char 44 in
-    let () = wg_key_to_base64 (CArray.start base64) (CArray.start key) in
+    let () =
+      wg_key_to_base64 (CArray.start base64) (CArray.start key)
+    in
     Ctypes.string_from_ptr
       (Ctypes.CArray.start base64)
       ~length:(Ctypes.CArray.length base64)
-  ;;
 
   let of_base64_string (key_string : string) =
     let base64 = CArray.of_string key_string in
     assert (CArray.length base64 = 45);
     let key = CArray.make Ctypes_static.uchar 32 in
-    let err = wg_key_from_base64 (CArray.start key) (CArray.start base64) in
+    let err =
+      wg_key_from_base64 (CArray.start key)
+        (CArray.start base64)
+    in
     match err with
     | 0 -> Ok key
     | _ -> Error "Failed to convert string to key"
-  ;;
 
   let to_string (key : t) =
-    let char_ptr = Ctypes.coerce (ptr uchar) (ptr char) (CArray.start key) in
+    let char_ptr =
+      Ctypes.coerce (ptr uchar) (ptr char) (CArray.start key)
+    in
     string_from_ptr char_ptr ~length:(CArray.length key)
-  ;;
 
   let of_string (s : string) : t =
     let len = String.length s in
     let arr = CArray.make uchar len in
     for i = 0 to len - 1 do
-      CArray.set arr i (Unsigned.UChar.of_int (Char.code s.[i]))
+      CArray.set arr i
+        (Unsigned.UChar.of_int (Char.code s.[i]))
     done;
     arr
-  ;;
 
-  let sexp_of_t (key : t) = Base.Sexp.Atom (to_base64_string key)
+  let sexp_of_t (key : t) =
+    Base.Sexp.Atom (to_base64_string key)
 
   let t_of_sexp (sexp : Base.Sexp.t) =
     let open Base in
-    String.t_of_sexp sexp |> of_base64_string |> Result.ok_or_failwith
-  ;;
+    String.t_of_sexp sexp
+    |> of_base64_string |> Result.ok_or_failwith
 end
 
 module Allowed_ip = struct
@@ -94,19 +97,16 @@ module Allowed_ip = struct
     match p with
     | Ipaddr.V4 p -> Ipaddr.V4.Prefix.bits p
     | Ipaddr.V6 p -> Ipaddr.V6.Prefix.bits p
-  ;;
 
   let prefix_network (p : t) =
     match p with
     | Ipaddr.V4 p -> Ipaddr.V4 (Ipaddr.V4.Prefix.network p)
     | Ipaddr.V6 p -> Ipaddr.V6 (Ipaddr.V6.Prefix.network p)
-  ;;
 
   let prefix_make cidr ip =
     match ip with
     | Ipaddr.V4 ip -> Ipaddr.V4 (Ipaddr.V4.Prefix.make cidr ip)
     | Ipaddr.V6 ip -> Ipaddr.V6 (Ipaddr.V6.Prefix.make cidr ip)
-  ;;
 
   let to_wg_allowed_ip allowed_ip =
     let ip = prefix_network allowed_ip in
@@ -117,115 +117,132 @@ module Allowed_ip = struct
       | Ipaddr.V6 _ -> af_inet6
     in
     let callowed_ip = make Wg_peer.AllowedIp.wg_allowedip in
-    setf callowed_ip Wg_peer.AllowedIp.family (Unsigned.UInt16.of_int family);
-    setf callowed_ip Wg_peer.AllowedIp.cidr (Unsigned.UInt8.of_int cidr);
+    setf callowed_ip Wg_peer.AllowedIp.family
+      (Unsigned.UInt16.of_int family);
+    setf callowed_ip Wg_peer.AllowedIp.cidr
+      (Unsigned.UInt8.of_int cidr);
     (* Set the ip of the allowed ip c struct *)
     let () =
       match ip with
       | Ipaddr.V4 ip ->
-        let addr = make Wg_peer.AllowedIp.in_addr in
-        (* Reverse the octets of the ip *)
-        (* TODO: figure out which way to flip oc tects is faster *)
-        let ip_octets = Ipaddr.V4.to_octets ip |> Base.String.to_array in
-        let ip_uint32 =
-          Base.Array.fold_right
-            ~init:Unsigned.UInt32.zero
-            ~f:(fun c (acc : Unsigned.UInt32.t) ->
-              Unsigned.UInt32.logor
-                (Unsigned.UInt32.shift_left acc 8)
-                (Unsigned.UInt32.of_int (Base.Char.to_int c)))
-            ip_octets
-        in
-        (* let ip_uint32 = *)
-        (*   Ipaddr.V4.to_octets ip |> Base.String.to_list_rev |> Base.String.of_list *)
-        (* |> Ipaddr.V4.of_octets_exn *)
-        (* in *)
-        setf addr Wg_peer.AllowedIp.s_addr ip_uint32;
-        let ip = make Wg_peer.AllowedIp.ip_union in
-        setf ip Wg_peer.AllowedIp.ip4 addr;
-        setf callowed_ip Wg_peer.AllowedIp.ip ip
+          let addr = make Wg_peer.AllowedIp.in_addr in
+          (* Reverse the octets of the ip *)
+          (* TODO: figure out which way to flip oc tects is faster *)
+          let ip_octets =
+            Ipaddr.V4.to_octets ip |> Base.String.to_array
+          in
+          let ip_uint32 =
+            Base.Array.fold_right ~init:Unsigned.UInt32.zero
+              ~f:(fun c (acc : Unsigned.UInt32.t) ->
+                Unsigned.UInt32.logor
+                  (Unsigned.UInt32.shift_left acc 8)
+                  (Unsigned.UInt32.of_int (Base.Char.to_int c)))
+              ip_octets
+          in
+          (* let ip_uint32 = *)
+          (*   Ipaddr.V4.to_octets ip |> Base.String.to_list_rev |> Base.String.of_list *)
+          (* |> Ipaddr.V4.of_octets_exn *)
+          (* in *)
+          setf addr Wg_peer.AllowedIp.s_addr ip_uint32;
+          let ip = make Wg_peer.AllowedIp.ip_union in
+          setf ip Wg_peer.AllowedIp.ip4 addr;
+          setf callowed_ip Wg_peer.AllowedIp.ip ip
       | Ipaddr.V6 ip ->
-        let addr = make Wg_peer.AllowedIp.in6_addr in
-        let ip_buf = Buffer.create 16 in
-        Ipaddr.V6.to_buffer ip_buf ip;
-        Array.iteri
-          (fun i c ->
-             setf addr c (Buffer.nth ip_buf i |> Base.Char.to_int |> Unsigned.UChar.of_int))
-          Wg_peer.AllowedIp.s6_addr;
-        let ip = make Wg_peer.AllowedIp.ip_union in
-        setf ip Wg_peer.AllowedIp.ip6 addr;
-        setf callowed_ip Wg_peer.AllowedIp.ip ip
+          let addr = make Wg_peer.AllowedIp.in6_addr in
+          let ip_buf = Buffer.create 16 in
+          Ipaddr.V6.to_buffer ip_buf ip;
+          Array.iteri
+            (fun i c ->
+              setf addr c
+                (Buffer.nth ip_buf i |> Base.Char.to_int
+               |> Unsigned.UChar.of_int))
+            Wg_peer.AllowedIp.s6_addr;
+          let ip = make Wg_peer.AllowedIp.ip_union in
+          setf ip Wg_peer.AllowedIp.ip6 addr;
+          setf callowed_ip Wg_peer.AllowedIp.ip ip
     in
     callowed_ip
-  ;;
 
   let of_wg_allowed_ip allowed_ip : t =
     let allowed_ip = !@allowed_ip in
-    let family = getf allowed_ip Wg_peer.AllowedIp.family |> Unsigned.UInt16.to_int in
-    let cidr = getf allowed_ip Wg_peer.AllowedIp.cidr |> Unsigned.UInt8.to_int in
+    let family =
+      getf allowed_ip Wg_peer.AllowedIp.family
+      |> Unsigned.UInt16.to_int
+    in
+    let cidr =
+      getf allowed_ip Wg_peer.AllowedIp.cidr
+      |> Unsigned.UInt8.to_int
+    in
     let ip_union = getf allowed_ip Wg_peer.AllowedIp.ip in
     let ip : Ipaddr.t =
       match family with
       | x when x == af_inet ->
-        let addr = getf ip_union Wg_peer.AllowedIp.ip4 in
-        let ip = getf addr Wg_peer.AllowedIp.s_addr |> Unsigned.UInt32.to_int32 in
-        Ipaddr.V4 (Ipaddr.V4.of_int32 (swap32 ip))
+          let addr = getf ip_union Wg_peer.AllowedIp.ip4 in
+          let ip =
+            getf addr Wg_peer.AllowedIp.s_addr
+            |> Unsigned.UInt32.to_int32
+          in
+          Ipaddr.V4 (Ipaddr.V4.of_int32 (swap32 ip))
       | x when x == af_inet6 ->
-        let addr = getf ip_union Wg_peer.AllowedIp.ip6 in
-        let ip_buf = Buffer.create 16 in
-        Array.iter
-          (fun c ->
-             Buffer.add_char
-               ip_buf
-               (getf addr c |> Unsigned.UChar.to_int |> Base.Char.of_int_exn))
-          Wg_peer.AllowedIp.s6_addr;
-        let ip = Ipaddr.V6.of_octets_exn (ip_buf |> Buffer.to_seq |> String.of_seq) in
-        Ipaddr.V6 ip
-      | x -> failwith ("Invalid family: " ^ (x |> Int.to_string))
+          let addr = getf ip_union Wg_peer.AllowedIp.ip6 in
+          let ip_buf = Buffer.create 16 in
+          Array.iter
+            (fun c ->
+              Buffer.add_char ip_buf
+                (getf addr c |> Unsigned.UChar.to_int
+               |> Base.Char.of_int_exn))
+            Wg_peer.AllowedIp.s6_addr;
+          let ip =
+            Ipaddr.V6.of_octets_exn
+              (ip_buf |> Buffer.to_seq |> String.of_seq)
+          in
+          Ipaddr.V6 ip
+      | x ->
+          failwith ("Invalid family: " ^ (x |> Int.to_string))
     in
     prefix_make cidr ip
-  ;;
 
   let set_next_allowedip allowed_ip next =
     setf allowed_ip Wg_peer.AllowedIp.next_allowedip next
-  ;;
 
-  (** [allowed_ips_of_list] [allowed_ip] takes a list ip allowed ips zips them together into a linked list and returns the first an last pointer *)
+  (** [allowed_ips_of_list] [allowed_ip] takes a list ip
+      allowed ips zips them together into a linked list and
+      returns the first an last pointer *)
   let allowed_ips_of_list (allowed_ips : t list) =
     let allowed_ips = List.map to_wg_allowed_ip allowed_ips in
     let rec loop = function
       | [] -> ()
       | [ x ] -> set_next_allowedip x None
       | x :: y :: xs ->
-        set_next_allowedip x (Some (addr y));
-        loop (y :: xs)
+          set_next_allowedip x (Some (addr y));
+          loop (y :: xs)
     in
     loop allowed_ips;
     let first = List.hd allowed_ips |> addr in
     let last = Base.List.last_exn allowed_ips |> addr in
-    first, last
-  ;;
+    (first, last)
 
   let list_of_first_last first _last =
     let rec loop acc current =
       let acc = current :: acc in
-      let next = getf !@current Wg_peer.AllowedIp.next_allowedip in
+      let next =
+        getf !@current Wg_peer.AllowedIp.next_allowedip
+      in
       match next with
       | None -> acc
       | Some next -> loop acc next
     in
     loop [] first |> List.rev |> List.map of_wg_allowed_ip
-  ;;
 end
 
 module Endpoint = struct
   open Ctypes
 
   (* TODO: add support for unix sockets *)
-  type t =
-    { addr : [ `V4 of Ipaddr.V4.t | `V6 of Ipaddr.V6.t ]
-    ; port : int
-    }
+  type t = {
+    addr : [ `V4 of Ipaddr.V4.t | `V6 of Ipaddr.V6.t ];
+    port : int;
+  }
   (* Unix.ADDR_UNIX *)
 
   let to_wg_endpoint e =
@@ -239,64 +256,78 @@ module Endpoint = struct
     let cendpoint = make Wg_endpoint.wg_endpoint in
     match e.addr with
     | `V4 addr ->
-      let caddr = make Socket.Sockaddr_in.sockaddr_in in
-      setf caddr Socket.Sockaddr_in.sin_family (Unsigned.UInt16.of_int af_inet);
-      setf
-        caddr
-        Socket.Sockaddr_in.sin_addr
-        (Ipaddr.V4.to_int32 addr |> swap32 |> Unsigned.UInt32.of_int32);
-      setf caddr Socket.Sockaddr_in.sin_port port;
-      setf cendpoint Wg_endpoint.addr4 caddr;
-      cendpoint
+        let caddr = make Socket.Sockaddr_in.sockaddr_in in
+        setf caddr Socket.Sockaddr_in.sin_family
+          (Unsigned.UInt16.of_int af_inet);
+        setf caddr Socket.Sockaddr_in.sin_addr
+          (Ipaddr.V4.to_int32 addr
+          |> swap32 |> Unsigned.UInt32.of_int32);
+        setf caddr Socket.Sockaddr_in.sin_port port;
+        setf cendpoint Wg_endpoint.addr4 caddr;
+        cendpoint
     | `V6 addr ->
-      let caddr = make Socket.Sockaddr_in6.sockaddr_in6 in
-      setf caddr Socket.Sockaddr_in6.sin6_family (Unsigned.UInt16.of_int af_inet6);
-      setf caddr Socket.Sockaddr_in6.sin6_port port;
-      let ip_buf = Buffer.create 16 in
-      Ipaddr.V6.to_buffer ip_buf addr;
-      Array.iteri
-        (fun i c ->
-           setf caddr c (Buffer.nth ip_buf i |> Base.Char.to_int |> Unsigned.UInt8.of_int))
-        Socket.Sockaddr_in6.sin6_addr;
-      setf cendpoint Wg_endpoint.addr6 caddr;
-      cendpoint
-  ;;
+        let caddr = make Socket.Sockaddr_in6.sockaddr_in6 in
+        setf caddr Socket.Sockaddr_in6.sin6_family
+          (Unsigned.UInt16.of_int af_inet6);
+        setf caddr Socket.Sockaddr_in6.sin6_port port;
+        let ip_buf = Buffer.create 16 in
+        Ipaddr.V6.to_buffer ip_buf addr;
+        Array.iteri
+          (fun i c ->
+            setf caddr c
+              (Buffer.nth ip_buf i |> Base.Char.to_int
+             |> Unsigned.UInt8.of_int))
+          Socket.Sockaddr_in6.sin6_addr;
+        setf cendpoint Wg_endpoint.addr6 caddr;
+        cendpoint
 
   let of_wg_endpoint e =
     let family =
-      getf (getf e Wg_endpoint.addr) Socket.Sockaddr.sa_family |> Unsigned.UInt16.to_int
+      getf (getf e Wg_endpoint.addr) Socket.Sockaddr.sa_family
+      |> Unsigned.UInt16.to_int
     in
     match family with
     | 0 -> None
     | x when x == af_local ->
-      let addr = getf e Wg_endpoint.addr in
-      let _sa_data = Array.map (fun c -> getf addr c) Socket.Sockaddr.sa_data in
-      (* TODO: implent local socket addr *)
-      failwith "Not implemented"
+        let addr = getf e Wg_endpoint.addr in
+        let _sa_data =
+          Array.map
+            (fun c -> getf addr c)
+            Socket.Sockaddr.sa_data
+        in
+        (* TODO: implent local socket addr *)
+        failwith "Not implemented"
     | x when x == af_inet ->
-      let addr = getf e Wg_endpoint.addr4 in
-      let port = getf addr Socket.Sockaddr_in.sin_port |> Unsigned.UInt16.to_int in
-      let addr =
-        getf addr Socket.Sockaddr_in.sin_addr
-        |> Unsigned.UInt32.to_int32
-        |> swap32
-        |> Ipaddr.V4.of_int32
-      in
-      Some { addr = `V4 addr; port }
+        let addr = getf e Wg_endpoint.addr4 in
+        let port =
+          getf addr Socket.Sockaddr_in.sin_port
+          |> Unsigned.UInt16.to_int
+        in
+        let addr =
+          getf addr Socket.Sockaddr_in.sin_addr
+          |> Unsigned.UInt32.to_int32 |> swap32
+          |> Ipaddr.V4.of_int32
+        in
+        Some { addr = `V4 addr; port }
     | x when x == af_inet6 ->
-      let addr = getf e Wg_endpoint.addr6 in
-      let port = getf addr Socket.Sockaddr_in6.sin6_port |> Unsigned.UInt16.to_int in
-      let addr = Array.map (fun c -> getf addr c) Socket.Sockaddr_in6.sin6_addr in
-      let addr =
-        Ipaddr.V6.of_octets_exn
-          (Array.map Unsigned.UInt8.to_int addr
-           |> Array.map Char.chr
-           |> Array.to_list
-           |> Base.String.of_list)
-      in
-      Some { addr = `V6 addr; port }
+        let addr = getf e Wg_endpoint.addr6 in
+        let port =
+          getf addr Socket.Sockaddr_in6.sin6_port
+          |> Unsigned.UInt16.to_int
+        in
+        let addr =
+          Array.map
+            (fun c -> getf addr c)
+            Socket.Sockaddr_in6.sin6_addr
+        in
+        let addr =
+          Ipaddr.V6.of_octets_exn
+            (Array.map Unsigned.UInt8.to_int addr
+            |> Array.map Char.chr |> Array.to_list
+            |> Base.String.of_list)
+        in
+        Some { addr = `V6 addr; port }
     | x -> failwith ("Invalid family: " ^ (x |> Int.to_string))
-  ;;
 end
 
 module Peer = struct
@@ -307,91 +338,109 @@ module Peer = struct
      WGPEER_HAS_PUBLIC_KEY = 1U << 2,
      WGPEER_HAS_PRESHARED_KEY = 1U << 3,
      WGPEER_HAS_PERSISTENT_KEEPALIVE_INTERVAL = 1U << 4 *)
-  type t =
-    { public_key : Key.t Option.t
-    ; preshared_key : Key.t Option.t
-    ; endpoint : Endpoint.t Option.t
-    ; last_handshake_time : Float.t
-    ; rx_bytes : int
-    ; tx_bytes : int
-    ; persistent_keepalive_interval : int Option.t
-    ; allowed_ips : Allowed_ip.t list
-    }
+  type t = {
+    public_key : Key.t Option.t;
+    preshared_key : Key.t Option.t;
+    endpoint : Endpoint.t Option.t;
+    last_handshake_time : Float.t;
+    rx_bytes : int;
+    tx_bytes : int;
+    persistent_keepalive_interval : int Option.t;
+    allowed_ips : Allowed_ip.t list;
+  }
 
-  let create
-        ?(public_key : Key.t option)
-        ?(preshared_key : Key.t option)
-        ?(endpoint : Endpoint.t option)
-        ?(persistent_keepalive_interval : int option)
-        ?allowed_ips
-        ()
-    =
-    { public_key
-    ; preshared_key
-    ; endpoint
-    ; last_handshake_time = 0.0
-    ; rx_bytes = 0
-    ; tx_bytes = 0
-    ; persistent_keepalive_interval
-    ; allowed_ips = Option.value ~default:[] allowed_ips
+  let create ?(public_key : Key.t option)
+      ?(preshared_key : Key.t option)
+      ?(endpoint : Endpoint.t option)
+      ?(persistent_keepalive_interval : int option)
+      ?allowed_ips () =
+    {
+      public_key;
+      preshared_key;
+      endpoint;
+      last_handshake_time = 0.0;
+      rx_bytes = 0;
+      tx_bytes = 0;
+      persistent_keepalive_interval;
+      allowed_ips = Option.value ~default:[] allowed_ips;
     }
-  ;;
 
   (* Note: does this need to be a pointer? *)
   type s = Wg_peer.wg_peer structure
   type p = s ptr
 
   let to_wg_peer peer : s =
-    let flags = ref Wg_peer.Wg_peer_flags.wgpeer_replace_allowedips in
+    let flags =
+      ref Wg_peer.Wg_peer_flags.wgpeer_replace_allowedips
+    in
     let cpeer = make Wg_peer.wg_peer in
     (* Set public key *)
     let () =
       match peer.public_key with
       | None -> ()
       | Some key ->
-        let () =
-          CArray.iteri
-            (fun i c -> Ctypes.setf cpeer (Array.get Wireguard.Wg_peer.public_key i) c)
-            key
-        in
-        flags := !flags lor Wg_peer.Wg_peer_flags.wgpeer_has_public_key
+          let () =
+            CArray.iteri
+              (fun i c ->
+                Ctypes.setf cpeer
+                  (Array.get Wireguard.Wg_peer.public_key i)
+                  c)
+              key
+          in
+          flags :=
+            !flags
+            lor Wg_peer.Wg_peer_flags.wgpeer_has_public_key
     in
     (* Set preshared key *)
     let () =
       match peer.preshared_key with
       | None -> ()
       | Some key ->
-        let () =
-          CArray.iteri
-            (fun i c -> Ctypes.setf cpeer (Array.get Wireguard.Wg_peer.preshared_key i) c)
-            key
-        in
-        flags := !flags lor Wg_peer.Wg_peer_flags.wgpeer_has_preshared_key
+          let () =
+            CArray.iteri
+              (fun i c ->
+                Ctypes.setf cpeer
+                  (Array.get Wireguard.Wg_peer.preshared_key i)
+                  c)
+              key
+          in
+          flags :=
+            !flags
+            lor Wg_peer.Wg_peer_flags.wgpeer_has_preshared_key
     in
     (* Set persistent_keepalive_interval *)
     let () =
       match peer.persistent_keepalive_interval with
       | None -> ()
       | Some interval ->
-        let () =
-          setf
-            cpeer
-            Wg_peer.persistent_keepalive_interval
-            (Unsigned.UInt16.of_int interval)
-        in
-        flags := !flags lor Wg_peer.Wg_peer_flags.wgpeer_has_persistent_keepalive_interval
+          let () =
+            setf cpeer Wg_peer.persistent_keepalive_interval
+              (Unsigned.UInt16.of_int interval)
+          in
+          flags :=
+            !flags
+            lor Wg_peer.Wg_peer_flags
+                .wgpeer_has_persistent_keepalive_interval
     in
     (* Set allowed ips *)
     let () =
       match List.is_empty peer.allowed_ips with
       | true -> ()
       | false ->
-        let first_allowedip, last_allowedip =
-          Allowed_ip.allowed_ips_of_list peer.allowed_ips
-        in
-        let () = setf cpeer Wg_peer.first_allowedip (Some first_allowedip) in
-        let () = setf cpeer Wg_peer.last_allowedip (Some last_allowedip) in
-        flags := !flags lor Wg_peer.Wg_peer_flags.wgpeer_replace_allowedips
+          let first_allowedip, last_allowedip =
+            Allowed_ip.allowed_ips_of_list peer.allowed_ips
+          in
+          let () =
+            setf cpeer Wg_peer.first_allowedip
+              (Some first_allowedip)
+          in
+          let () =
+            setf cpeer Wg_peer.last_allowedip
+              (Some last_allowedip)
+          in
+          flags :=
+            !flags
+            lor Wg_peer.Wg_peer_flags.wgpeer_replace_allowedips
     in
     (* Set flags *)
     setf cpeer Wg_peer.flags (Unsigned.UInt32.of_int !flags);
@@ -400,62 +449,96 @@ module Peer = struct
       match peer.endpoint with
       | None -> ()
       | Some endpoint ->
-        let cendpoint = Endpoint.to_wg_endpoint endpoint in
-        setf cpeer Wg_peer.endpoint cendpoint
+          let cendpoint = Endpoint.to_wg_endpoint endpoint in
+          setf cpeer Wg_peer.endpoint cendpoint
     in
     (* let () = failwith "Not implemented" in *)
     cpeer
-  ;;
 
   let of_wg_peer (peer : s) : t =
-    let flags = getf peer Wg_peer.flags |> Unsigned.UInt32.to_int in
+    let flags =
+      getf peer Wg_peer.flags |> Unsigned.UInt32.to_int
+    in
     let public_key : Key.t Option.t =
-      match flags land Wg_peer.Wg_peer_flags.wgpeer_has_public_key with
-      | 0 -> None
-      | _ -> Some (Array.map (fun c -> getf peer c) Wg_peer.public_key |> Key.of_array)
-    in
-    let preshared_key : Key.t Option.t =
-      match flags land Wg_peer.Wg_peer_flags.wgpeer_has_preshared_key with
-      | 0 -> None
-      | _ -> Some (Array.map (fun c -> getf peer c) Wg_peer.preshared_key |> Key.of_array)
-    in
-    let persistent_keepalive_interval =
-      match flags land Wg_peer.Wg_peer_flags.wgpeer_has_persistent_keepalive_interval with
+      match
+        flags land Wg_peer.Wg_peer_flags.wgpeer_has_public_key
+      with
       | 0 -> None
       | _ ->
-        Some (getf peer Wg_peer.persistent_keepalive_interval |> Unsigned.UInt16.to_int)
+          Some
+            (Array.map
+               (fun c -> getf peer c)
+               Wg_peer.public_key
+            |> Key.of_array)
     in
-    let last_handshake_time = getf peer Wg_peer.last_handshake_time in
+    let preshared_key : Key.t Option.t =
+      match
+        flags
+        land Wg_peer.Wg_peer_flags.wgpeer_has_preshared_key
+      with
+      | 0 -> None
+      | _ ->
+          Some
+            (Array.map
+               (fun c -> getf peer c)
+               Wg_peer.preshared_key
+            |> Key.of_array)
+    in
+    let persistent_keepalive_interval =
+      match
+        flags
+        land Wg_peer.Wg_peer_flags
+             .wgpeer_has_persistent_keepalive_interval
+      with
+      | 0 -> None
+      | _ ->
+          Some
+            (getf peer Wg_peer.persistent_keepalive_interval
+            |> Unsigned.UInt16.to_int)
+    in
+    let last_handshake_time =
+      getf peer Wg_peer.last_handshake_time
+    in
     let last_handshake_time_sec =
-      getf last_handshake_time TimeSpec64.tv_sec |> Int64.to_int
+      getf last_handshake_time TimeSpec64.tv_sec
+      |> Int64.to_int
     in
     let last_handshake_time_nsec =
-      getf last_handshake_time TimeSpec64.tv_nsec |> Int64.to_int
+      getf last_handshake_time TimeSpec64.tv_nsec
+      |> Int64.to_int
     in
     let last_handshake_time =
       Float.of_int last_handshake_time_sec
-      +. (Float.of_int last_handshake_time_nsec /. 1_000_000_000.)
+      +. Float.of_int last_handshake_time_nsec
+         /. 1_000_000_000.
     in
-    let rx_bytes = getf peer Wg_peer.rx_bytes |> Unsigned.UInt64.to_int in
-    let tx_bytes = getf peer Wg_peer.tx_bytes |> Unsigned.UInt64.to_int in
+    let rx_bytes =
+      getf peer Wg_peer.rx_bytes |> Unsigned.UInt64.to_int
+    in
+    let tx_bytes =
+      getf peer Wg_peer.tx_bytes |> Unsigned.UInt64.to_int
+    in
     let first_allowedip = getf peer Wg_peer.first_allowedip in
     let last_allowedip = getf peer Wg_peer.last_allowedip in
     let allowed_ips =
-      match first_allowedip, last_allowedip with
-      | Some first, Some last -> Allowed_ip.list_of_first_last first last
+      match (first_allowedip, last_allowedip) with
+      | Some first, Some last ->
+          Allowed_ip.list_of_first_last first last
       | _, _ -> []
     in
-    let endpoint = getf peer Wg_peer.endpoint |> Endpoint.of_wg_endpoint in
-    { public_key
-    ; preshared_key
-    ; endpoint
-    ; last_handshake_time
-    ; rx_bytes
-    ; tx_bytes
-    ; persistent_keepalive_interval
-    ; allowed_ips
+    let endpoint =
+      getf peer Wg_peer.endpoint |> Endpoint.of_wg_endpoint
+    in
+    {
+      public_key;
+      preshared_key;
+      endpoint;
+      last_handshake_time;
+      rx_bytes;
+      tx_bytes;
+      persistent_keepalive_interval;
+      allowed_ips;
     }
-  ;;
 
   (* let list_of_first_last (start : p) (stop : p) : t list = *)
   (*   let rec loop acc current : s list = *)
@@ -476,9 +559,9 @@ module Peer = struct
       | Some next -> loop (!@current :: acc) next
     in
     loop [] start |> List.map of_wg_peer
-  ;;
 
-  let set_next_peer (peer : s) next = setf peer Wg_peer.next_peer next
+  let set_next_peer (peer : s) next =
+    setf peer Wg_peer.next_peer next
 
   let s_list_of_list (peers : t list) =
     let cpeers = List.map to_wg_peer peers in
@@ -486,22 +569,20 @@ module Peer = struct
       | [] -> ()
       | [ x ] -> set_next_peer x None
       | x :: y :: xs ->
-        set_next_peer x (Some (addr y));
-        loop (y :: xs)
+          set_next_peer x (Some (addr y));
+          loop (y :: xs)
     in
     loop cpeers;
     cpeers
-  ;;
 
   let first_last_of_list (peers : t list) =
     match List.is_empty peers with
-    | true -> None, None
+    | true -> (None, None)
     | false ->
-      let cpeers = s_list_of_list peers in
-      let first = Base.List.hd_exn cpeers |> addr in
-      let last = Base.List.last_exn cpeers |> addr in
-      Some first, Some last
-  ;;
+        let cpeers = s_list_of_list peers in
+        let first = Base.List.hd_exn cpeers |> addr in
+        let last = Base.List.last_exn cpeers |> addr in
+        (Some first, Some last)
 end
 
 module Interface = struct
@@ -518,44 +599,41 @@ module Interface = struct
   (* 	struct wg_peer *first_peer, *last_peer; *)
   (* } wg_device; *)
 
-  type t =
-    { name : string
-    ; ifindex : int
-    ; public_key : Key.t Option.t
-    ; private_key : Key.t Option.t
-    ; fwmark : int Option.t
-    ; listen_port : int Option.t
-    ; peers : Peer.t List.t
-    }
+  type t = {
+    name : string;
+    ifindex : int;
+    public_key : Key.t Option.t;
+    private_key : Key.t Option.t;
+    fwmark : int Option.t;
+    listen_port : int Option.t;
+    peers : Peer.t List.t;
+  }
 
-  let create
-        ~name
-        ?(public_key : Key.t option)
-        ?(private_key : Key.t option)
-        ?(fwmark : int option)
-        ?(listen_port : int option)
-        ?peers
-        ()
-    =
+  let create ~name ?(public_key : Key.t option)
+      ?(private_key : Key.t option) ?(fwmark : int option)
+      ?(listen_port : int option) ?peers () =
     let _ = Wireguard.wg_add_device name in
-    { name
-    ; ifindex = -1
-    ; public_key
-    ; private_key
-    ; fwmark
-    ; listen_port
-    ; peers = Option.value ~default:[] peers
+    {
+      name;
+      ifindex = -1;
+      public_key;
+      private_key;
+      fwmark;
+      listen_port;
+      peers = Option.value ~default:[] peers;
     }
-  ;;
 
   let to_wg_device device =
-    let flags = ref Wg_device.Wg_device_flags.wgdevice_replace_peers in
+    let flags =
+      ref Wg_device.Wg_device_flags.wgdevice_replace_peers
+    in
     let cdevice = make Wg_device.wg_device in
     let name_arr = Base.String.to_array device.name in
     (* Set name *)
     let () =
       Base.Array.iteri
-        ~f:(fun i c -> setf cdevice (Array.get Wireguard.Wg_device.name i) c)
+        ~f:(fun i c ->
+          setf cdevice (Array.get Wireguard.Wg_device.name i) c)
         name_arr
     in
     (* Set port *)
@@ -563,162 +641,209 @@ module Interface = struct
       match device.listen_port with
       | None -> ()
       | Some port ->
-        let () = setf cdevice Wg_device.listen_port (Unsigned.UInt16.of_int port) in
-        flags := !flags lor Wg_device.Wg_device_flags.wgdevice_has_listen_port
+          let () =
+            setf cdevice Wg_device.listen_port
+              (Unsigned.UInt16.of_int port)
+          in
+          flags :=
+            !flags
+            lor Wg_device.Wg_device_flags
+                .wgdevice_has_listen_port
     in
     (* Set public key *)
     let () =
       match device.public_key with
       | None -> ()
       | Some key ->
-        let () =
-          CArray.iteri
-            (fun i c ->
-               Ctypes.setf cdevice (Array.get Wireguard.Wg_device.public_key i) c)
-            key
-        in
-        flags := !flags lor Wg_device.Wg_device_flags.wgdevice_has_public_key
+          let () =
+            CArray.iteri
+              (fun i c ->
+                Ctypes.setf cdevice
+                  (Array.get Wireguard.Wg_device.public_key i)
+                  c)
+              key
+          in
+          flags :=
+            !flags
+            lor Wg_device.Wg_device_flags
+                .wgdevice_has_public_key
     in
     (* Set Private key *)
     let () =
       match device.private_key with
       | None -> ()
       | Some key ->
-        let () =
-          CArray.iteri
-            (fun i c ->
-               Ctypes.setf cdevice (Array.get Wireguard.Wg_device.private_key i) c)
-            key
-        in
-        flags := !flags lor Wg_device.Wg_device_flags.wgdevice_has_private_key
+          let () =
+            CArray.iteri
+              (fun i c ->
+                Ctypes.setf cdevice
+                  (Array.get Wireguard.Wg_device.private_key i)
+                  c)
+              key
+          in
+          flags :=
+            !flags
+            lor Wg_device.Wg_device_flags
+                .wgdevice_has_private_key
     in
     (* Set fwmark *)
     let () =
       match device.fwmark with
       | None -> ()
       | Some fwmark ->
-        let () = setf cdevice Wg_device.fwmark (Unsigned.UInt32.of_int fwmark) in
-        flags := !flags lor Wg_device.Wg_device_flags.wgdevice_has_fwmark
+          let () =
+            setf cdevice Wg_device.fwmark
+              (Unsigned.UInt32.of_int fwmark)
+          in
+          flags :=
+            !flags
+            lor Wg_device.Wg_device_flags.wgdevice_has_fwmark
     in
     (* Set flags *)
-    let () = setf cdevice Wg_device.flags (Unsigned.UInt32.of_int !flags) in
+    let () =
+      setf cdevice Wg_device.flags
+        (Unsigned.UInt32.of_int !flags)
+    in
     (* set first and last peer *)
-    let first_peer, last_peer = Peer.first_last_of_list device.peers in
+    let first_peer, last_peer =
+      Peer.first_last_of_list device.peers
+    in
     let () = setf cdevice Wg_device.first_peer first_peer in
     let () = setf cdevice Wg_device.last_peer last_peer in
     cdevice
-  ;;
 
   let of_wg_device cdevice =
     let device =
-      { name = ""
-      ; ifindex = 0
-      ; public_key = None
-      ; private_key = None
-      ; fwmark = None
-      ; listen_port = None
-      ; peers = []
+      {
+        name = "";
+        ifindex = 0;
+        public_key = None;
+        private_key = None;
+        fwmark = None;
+        listen_port = None;
+        peers = [];
       }
     in
-    let flags = getf cdevice Wg_device.flags |> Unsigned.UInt32.to_int in
-    (* Listen port *)
+    let flags =
+      getf cdevice Wg_device.flags |> Unsigned.UInt32.to_int
+    in
+    (* Listen port - the C library doesn't set flags when reading from kernel,
+       so we read the value directly and treat 0 as "not set" *)
     let device =
-      match flags land Wg_device.Wg_device_flags.wgdevice_has_listen_port with
+      let port =
+        getf cdevice Wg_device.listen_port
+        |> Unsigned.UInt16.to_int
+      in
+      match port with
       | 0 -> device
-      | _ ->
-        { device with
-          listen_port = Some (getf cdevice Wg_device.listen_port |> Unsigned.UInt16.to_int)
-        }
+      | _ -> { device with listen_port = Some port }
     in
     (* Public key *)
     let device =
-      match flags land Wg_device.Wg_device_flags.wgdevice_has_public_key with
+      match
+        flags
+        land Wg_device.Wg_device_flags.wgdevice_has_public_key
+      with
       | 0 -> device
       | _ ->
-        let public_key = Array.map (fun c -> getf cdevice c) Wg_device.public_key in
-        { device with public_key = Some (Key.of_array public_key) }
+          let public_key =
+            Array.map
+              (fun c -> getf cdevice c)
+              Wg_device.public_key
+          in
+          {
+            device with
+            public_key = Some (Key.of_array public_key);
+          }
     in
     (* private key *)
     let device =
-      match flags land Wg_device.Wg_device_flags.wgdevice_has_private_key with
+      match
+        flags
+        land Wg_device.Wg_device_flags.wgdevice_has_private_key
+      with
       | 0 -> device
       | _ ->
-        let private_key = Array.map (fun c -> getf cdevice c) Wg_device.private_key in
-        { device with private_key = Some (Key.of_array private_key) }
+          let private_key =
+            Array.map
+              (fun c -> getf cdevice c)
+              Wg_device.private_key
+          in
+          {
+            device with
+            private_key = Some (Key.of_array private_key);
+          }
     in
-    (* fwmark *)
+    (* fwmark - same as listen_port, read directly and treat 0 as "not set" *)
     let device =
-      match flags land Wg_device.Wg_device_flags.wgdevice_has_fwmark with
+      let fwmark =
+        getf cdevice Wg_device.fwmark |> Unsigned.UInt32.to_int
+      in
+      match fwmark with
       | 0 -> device
-      | _ ->
-        { device with
-          fwmark = Some (getf cdevice Wg_device.fwmark |> Unsigned.UInt32.to_int)
-        }
+      | _ -> { device with fwmark = Some fwmark }
     in
     (* Name *)
     let device =
-      let name = Array.map (fun c -> getf cdevice c) Wg_device.name in
+      let name =
+        Array.map (fun c -> getf cdevice c) Wg_device.name
+      in
       { device with name = Base.String.of_array name }
     in
     (* Ifindex *)
     let device =
-      let ifindex = getf cdevice Wg_device.ifindex |> Unsigned.UInt32.to_int in
+      let ifindex =
+        getf cdevice Wg_device.ifindex
+        |> Unsigned.UInt32.to_int
+      in
       { device with ifindex }
     in
     let first_peer = getf cdevice Wg_device.first_peer in
     let last_peer = getf cdevice Wg_device.last_peer in
-    match first_peer, last_peer with
-    | Some first, Some last -> { device with peers = Peer.list_of_first_last first last }
+    match (first_peer, last_peer) with
+    | Some first, Some last ->
+        {
+          device with
+          peers = Peer.list_of_first_last first last;
+        }
     | _, None -> device
     | None, _ -> device
-  ;;
 
   let get_device name =
     let cdevice = make Wg_device.wg_device in
-    let cdevice = allocate (ptr Wg_device.wg_device) (addr cdevice) in
+    let cdevice =
+      allocate (ptr Wg_device.wg_device) (addr cdevice)
+    in
     let res = wg_get_device cdevice name in
     match res with
     | 0 -> Ok (of_wg_device !@(!@cdevice))
     | _ -> Error "Failed to get device"
-  ;;
 
   (* Note: when sending peers they need to be stored in stable memory (bigarray, CArray, malloc, Ctypes.allocate) I assume Ctypes.make *)
 
   module DeviceError = struct
-    (** EPERM		 1	/* Operation not permitted */
-        ENOENT		 2	/* No such file or directory */
-        ESRCH		 3	/* No such process */
-        EINTR		 4	/* Interrupted system call */
-        EIO		     5	/* I/O error */
-        ENXIO		 6	/* No such device or address */
-        E2BIG		 7	/* Argument list too long */
-        ENOEXEC		 8	/* Exec format error */
-        EBADF		 9	/* Bad file number */
-        ECHILD		10	/* No child processes */
-        EAGAIN		11	/* Try again */
-        ENOMEM		12	/* Out of memory */
-        EACCES		13	/* Permission denied */
-        EFAULT		14	/* Bad address */
-        ENOTBLK		15	/* Block device required */
-        EBUSY		16	/* Device or resource busy */
-        EEXIST		17	/* File exists */
-        EXDEV		18	/* Cross-device link */
-        ENODEV		19	/* No such device */
-        ENOTDIR		20	/* Not a directory */
-        EISDIR		21	/* Is a directory */
-        EINVAL		22	/* Invalid argument */
-        ENFILE		23	/* File table overflow */
-        EMFILE		24	/* Too many open files */
-        ENOTTY		25	/* Not a typewriter */
-        ETXTBSY		26	/* Text file busy */
-        EFBIG		27	/* File too large */
-        ENOSPC		28	/* No space left on device */
-        ESPIPE		29	/* Illegal seek */
-        EROFS		30	/* Read-only file system */
-        EMLINK		31	/* Too many links */
-        EPIPE		32	/* Broken pipe */
-        EDOM		33	/* Math argument out of domain of func */
-        ERANGE		34	/* Math result not representable */ *)
+    (** EPERM 1 /* Operation not permitted */ ENOENT 2 /* No
+        such file or directory */ ESRCH 3 /* No such process */
+        EINTR 4 /* Interrupted system call */ EIO 5 /* I/O
+        error */ ENXIO 6 /* No such device or address */ E2BIG
+        7 /* Argument list too long */ ENOEXEC 8 /* Exec format
+        error */ EBADF 9 /* Bad file number */ ECHILD 10 /* No
+        child processes */ EAGAIN 11 /* Try again */ ENOMEM 12
+        /* Out of memory */ EACCES 13 /* Permission denied */
+        EFAULT 14 /* Bad address */ ENOTBLK 15 /* Block device
+        required */ EBUSY 16 /* Device or resource busy */
+        EEXIST 17 /* File exists */ EXDEV 18 /* Cross-device
+        link */ ENODEV 19 /* No such device */ ENOTDIR 20 /*
+        Not a directory */ EISDIR 21 /* Is a directory */
+        EINVAL 22 /* Invalid argument */ ENFILE 23 /* File
+        table overflow */ EMFILE 24 /* Too many open files */
+        ENOTTY 25 /* Not a typewriter */ ETXTBSY 26 /* Text
+        file busy */ EFBIG 27 /* File too large */ ENOSPC 28 /*
+        No space left on device */ ESPIPE 29 /* Illegal seek */
+        EROFS 30 /* Read-only file system */ EMLINK 31 /* Too
+        many links */ EPIPE 32 /* Broken pipe */ EDOM 33 /*
+        Math argument out of domain of func */ ERANGE 34 /*
+        Math result not representable */ *)
     type t =
       | EPERM
       | ENOENT
@@ -791,7 +916,6 @@ module Interface = struct
       | EPIPE -> "Broken pipe"
       | EDOM -> "Math argument out of domain of func"
       | ERANGE -> "Math result not representable"
-    ;;
 
     let of_int i =
       match i * -1 with
@@ -831,7 +955,6 @@ module Interface = struct
       | 33 -> Error EDOM
       | 34 -> Error ERANGE
       | e -> failwith ("Unknown error: " ^ (e |> Int.to_string))
-    ;;
   end
 
   (* BUG: Cant add 90+ devices at once *)
@@ -839,7 +962,6 @@ module Interface = struct
     let cdevice = to_wg_device device in
     let res = wg_set_device (addr cdevice) in
     DeviceError.of_int res
-  ;;
 
   (* Wireguard.Wg_device.Wg_device_flags.wgdevice_replace_peers <- Used to replace peers instead of adding them *)
   (* Set device without the public key flag *)
@@ -849,17 +971,14 @@ module Interface = struct
     setf cdevice Wg_device.flags (Unsigned.UInt32.of_int 0);
     let res = wg_set_device (addr cdevice) in
     DeviceError.of_int res
-  ;;
 
   let set_peers device peers =
     let device = { device with peers } in
     let cdevice = to_wg_device device in
-    setf
-      cdevice
-      Wg_device.flags
-      (Unsigned.UInt32.of_int Wg_device.Wg_device_flags.wgdevice_replace_peers);
+    setf cdevice Wg_device.flags
+      (Unsigned.UInt32.of_int
+         Wg_device.Wg_device_flags.wgdevice_replace_peers);
     wg_set_device (addr cdevice) |> DeviceError.of_int
-  ;;
 
   let configure_peers _peers = failwith "Not implemented"
 
@@ -869,17 +988,17 @@ module Interface = struct
     let () =
       List.iter
         (fun p ->
-           setf
-             p
-             Wg_peer.flags
-             (Wg_peer.Wg_peer_flags.wgpeer_remove_me |> Unsigned.UInt32.of_int))
+          setf p Wg_peer.flags
+            (Wg_peer.Wg_peer_flags.wgpeer_remove_me
+           |> Unsigned.UInt32.of_int))
         peers
     in
     let cdevice = to_wg_device device in
     setf cdevice Wg_device.flags (Unsigned.UInt32.of_int 0);
-    let first_peer, last_peer = Base.(List.hd_exn peers, List.last_exn peers) in
+    let first_peer, last_peer =
+      Base.(List.hd_exn peers, List.last_exn peers)
+    in
     setf cdevice Wg_device.first_peer (Some (addr first_peer));
     setf cdevice Wg_device.last_peer (Some (addr last_peer));
     wg_set_device (addr cdevice) |> DeviceError.of_int
-  ;;
 end
