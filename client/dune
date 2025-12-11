@@ -11,6 +11,7 @@
   dnslib
   eio
   eio_main
+  traffic_hook
   base64)
  (preprocess
   (pps ppx_cstruct ppx_jane)))
