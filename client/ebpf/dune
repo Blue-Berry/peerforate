@@ -4,6 +4,7 @@
  (libraries libbpf libbpf_maps ctypes ctypes.foreign unix))
 
 ; Build rule to compile the eBPF kernel program
+
 (rule
  (mode
   (promote (until-clean)))
@@ -14,6 +15,7 @@
    "clang -g -O2 -target bpf -D__TARGET_ARCH_$(cat arch) -I${LIBBPF_INCLUDE:-/usr/include} -c packet_filter.bpf.c -o packet_filter.bpf.o")))
 
 ; Generate vmlinux.h from BTF and detect architecture
+
 (rule
  (mode
   (promote (until-clean)))
@@ -22,7 +24,7 @@
   (progn
    (with-stdout-to
     vmlinux.h
-     (run bpftool btf dump file /sys/kernel/btf/vmlinux format c))
+    (run bpftool btf dump file /sys/kernel/btf/vmlinux format c))
    (with-stdout-to
     arch
     (bash
