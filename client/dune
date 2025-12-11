@@ -1,7 +1,7 @@
 (executable
  (public_name peerforate-client)
  (name main)
- (modules main tofu config wgctrl traffic_mon)
+ (modules main tofu config wgctrl traffic_mon fetch_peer)
  (libraries
   wg_nat
   core

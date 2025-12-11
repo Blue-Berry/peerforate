@@ -4,6 +4,15 @@ let af_local = 1
 let af_inet = 2
 let af_inet6 = 10
 
+let swap32 n =
+  let open Int32 in
+  let b0 = logand n 0xFFl in
+  let b1 = logand (shift_right_logical n 8) 0xFFl in
+  let b2 = logand (shift_right_logical n 16) 0xFFl in
+  let b3 = logand (shift_right_logical n 24) 0xFFl in
+  logor (shift_left b0 24) (logor (shift_left b1 16) (logor (shift_left b2 8) b3))
+;;
+
 module Key = struct
   open Ctypes
 
@@ -160,7 +169,7 @@ module Allowed_ip = struct
       | x when x == af_inet ->
         let addr = getf ip_union Wg_peer.AllowedIp.ip4 in
         let ip = getf addr Wg_peer.AllowedIp.s_addr |> Unsigned.UInt32.to_int32 in
-        Ipaddr.V4 (Ipaddr.V4.of_int32 ip)
+        Ipaddr.V4 (Ipaddr.V4.of_int32 (swap32 ip))
       | x when x == af_inet6 ->
         let addr = getf ip_union Wg_peer.AllowedIp.ip6 in
         let ip_buf = Buffer.create 16 in
@@ -197,17 +206,15 @@ module Allowed_ip = struct
     first, last
   ;;
 
-  let list_of_first_last first last =
+  let list_of_first_last first _last =
     let rec loop acc current =
-      if current == last
-      then acc
-      else (
-        let next = getf !@current Wg_peer.AllowedIp.next_allowedip in
-        match next with
-        | None -> acc
-        | Some next -> loop (current :: acc) next)
+      let acc = current :: acc in
+      let next = getf !@current Wg_peer.AllowedIp.next_allowedip in
+      match next with
+      | None -> acc
+      | Some next -> loop acc next
     in
-    loop [] first |> List.map of_wg_allowed_ip
+    loop [] first |> List.rev |> List.map of_wg_allowed_ip
   ;;
 end
 
@@ -237,7 +244,7 @@ module Endpoint = struct
       setf
         caddr
         Socket.Sockaddr_in.sin_addr
-        (Ipaddr.V4.to_int32 addr |> Unsigned.UInt32.of_int32);
+        (Ipaddr.V4.to_int32 addr |> swap32 |> Unsigned.UInt32.of_int32);
       setf caddr Socket.Sockaddr_in.sin_port port;
       setf cendpoint Wg_endpoint.addr4 caddr;
       cendpoint
@@ -272,6 +279,7 @@ module Endpoint = struct
       let addr =
         getf addr Socket.Sockaddr_in.sin_addr
         |> Unsigned.UInt32.to_int32
+        |> swap32
         |> Ipaddr.V4.of_int32
       in
       Some { addr = `V4 addr; port }

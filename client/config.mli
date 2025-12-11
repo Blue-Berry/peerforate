@@ -2,7 +2,6 @@ type t =
   { server_endpoint : string
   ; server_port : int
   ; wg_interface : string
-  ; wg_port : int
   ; server_dns_port : int
   }
 
