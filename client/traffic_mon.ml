@@ -49,14 +49,20 @@ let update_peer
       ~server_key
       ~dst_key
   =
-  let pub_key = wg_intrf.public_key |> Option.value_exn in
-  let priv_key = wg_intrf.private_key |> Option.value_exn in
+  let pub_key =
+    wg_intrf.public_key |> Option.value_exn ~message:"Failed to get device public key"
+  in
+  let priv_key =
+    wg_intrf.private_key |> Option.value_exn ~message:"Failed to get device private key"
+  in
   let sock = Wg_nat.Request.RawUdpSock.init () in
   Bpf_filter.attach_filter
     ~sock
     ~server_ip:(Core_unix.Inet_addr.of_string conf.server_endpoint)
     ~server_port:conf.server_port
-    ~wg_port:(wg_intrf.listen_port |> Option.value_exn);
+    ~wg_port:
+      (wg_intrf.listen_port
+       |> Option.value_exn ~message:"Failed to get device listen port");
   let reply =
     Fetch_peer.fetch_peer_endpoint
       ~server_key
@@ -72,7 +78,7 @@ let update_peer
     Wgctrl.update_peer
       wg_intrf
       dst_key
-      (R.get_t_addr reply |> Option.value_exn)
+      (R.get_t_addr reply |> Option.value_exn ~message:"Failed to get reply addr")
       (R.get_t_port reply)
     |> (function
      | Ok () -> ()
@@ -88,8 +94,8 @@ let callback ~clock ~(wg_intrf : Wg.Interface.t) ~(conf : Config.t) ~server_key 
   fun ~(dst_ip : Ipaddr.t) ~(timestamp : int64) ->
   Eio.traceln
     "%s: Traffic monitor callback. dest ip: %s"
-    (Ipaddr.to_string dst_ip)
-    (Int64.to_string timestamp);
+    (Int64.to_string timestamp)
+    (Ipaddr.to_string dst_ip);
   match Allowed_ip_map.find map dst_ip with
   | None -> ()
   | Some dst_key ->
