@@ -191,12 +191,16 @@ let start_eio ~sw ~interface ~target_subnets ?debounce_ms callback =
   let events_map, cleanup = setup ~interface ~target_subnets ?debounce_ms () in
   (* Register cleanup with switch *)
   Eio.Switch.on_release sw cleanup;
+  (* Queue to hold events extracted from ring buffer callback.
+     We can't call Eio functions from within the C callback, so we
+     extract data and process it outside the C call. *)
+  let pending_events = ref [] in
   let handle_event _ctx data _sz =
     Printf.eprintf "Traffic_hook: event received\n%!";
     let ev = !@(from_voidp packet_event data) in
-    callback
-      ~dst_ip:(ip_of_event ev)
-      ~timestamp:(Unsigned.UInt64.to_int64 (getf ev ev_ts));
+    let dst_ip = ip_of_event ev in
+    let timestamp = Unsigned.UInt64.to_int64 (getf ev ev_ts) in
+    pending_events := (dst_ip, timestamp) :: !pending_events;
     0
   in
   (* Poll loop - check for cancellation between polls *)
@@ -209,8 +213,12 @@ let start_eio ~sw ~interface ~target_subnets ?debounce_ms callback =
         Eio.Fiber.check ();
         (* Wait until data is available *)
         Eio_unix.await_readable unix_fd;
-        (* Process available events non-blocking *)
-        ignore (RingBuffer.consume rb)
+        (* Process available events non-blocking - this populates pending_events *)
+        ignore (RingBuffer.consume rb);
+        (* Now process events outside of C callback context *)
+        let events = List.rev !pending_events in
+        pending_events := [];
+        List.iter (fun (dst_ip, timestamp) -> callback ~dst_ip ~timestamp) events
       done
     with
     | Eio.Cancel.Cancelled _ -> ())
