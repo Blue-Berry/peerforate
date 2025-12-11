@@ -10,7 +10,6 @@ struct packet_event {
     unsigned short src_port;  /* Source port (network byte order) */
     unsigned short dst_port;  /* Destination port (network byte order) */
     unsigned char protocol;   /* IP protocol (TCP=6, UDP=17, ICMP=1) */
-    unsigned char direction;  /* 0 = ingress, 1 = egress */
     unsigned short pkt_len;   /* Packet length */
     unsigned long long ts;    /* Timestamp in nanoseconds */
 };
