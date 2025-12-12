@@ -25,7 +25,7 @@ module Packet : sig
     -> string
 
   val create
-    :  source:int
+    :  source_port:int
     -> dest_port:int
     -> hst_key:Wglib.Wgapi.Key.t
     -> dest_key:Wglib.Wgapi.Key.t

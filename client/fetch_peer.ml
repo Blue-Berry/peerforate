@@ -4,6 +4,7 @@ module R = Wg_nat.Reply.Packet
 module K = Wglib.Wgapi.Key
 
 let fetch_peer_endpoint
+      ~source_port
       ~server_key
       ~hst_pub_key
       ~hst_priv_key
@@ -15,7 +16,7 @@ let fetch_peer_endpoint
   =
   let packet =
     P.create
-      ~source:51820
+      ~source_port
       ~dest_port:conf.server_port
       ~hst_key:hst_pub_key
       ~dest_key:dest_pub_key

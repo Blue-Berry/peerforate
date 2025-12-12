@@ -56,15 +56,17 @@ let update_peer
     wg_intrf.private_key |> Option.value_exn ~message:"Failed to get device private key"
   in
   let sock = Wg_nat.Request.RawUdpSock.init () in
+  let listen_port =
+    wg_intrf.listen_port |> Option.value_exn ~message:"Failed to get device listen port"
+  in
   Bpf_filter.attach_filter
     ~sock
     ~server_ip:(Core_unix.Inet_addr.of_string conf.server_endpoint)
     ~server_port:conf.server_port
-    ~wg_port:
-      (wg_intrf.listen_port
-       |> Option.value_exn ~message:"Failed to get device listen port");
+    ~wg_port:listen_port;
   let reply =
     Fetch_peer.fetch_peer_endpoint
+      ~source_port:listen_port
       ~server_key
       ~hst_pub_key:pub_key
       ~hst_priv_key:priv_key
@@ -75,11 +77,12 @@ let update_peer
   in
   match reply with
   | Some reply ->
-    Wgctrl.update_peer
-      wg_intrf
-      dst_key
-      (R.get_t_addr reply |> Option.value_exn ~message:"Failed to get reply addr")
-      (R.get_t_port reply)
+    let dest_addr =
+      R.get_t_addr reply |> Option.value_exn ~message:"Failed to get reply addr"
+    in
+    let dest_port = R.get_t_port reply in
+    Eio.traceln "Setting peer endpoint: %s:%d" (Ipaddr.to_string dest_addr) dest_port;
+    Wgctrl.update_peer wg_intrf dst_key dest_addr dest_port
     |> (function
      | Ok () -> ()
      | Error err ->

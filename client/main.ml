@@ -5,6 +5,9 @@ module K = Wglib.Wgapi.Key
 
 (* TODO: *)
 (* Create a peer config system  *)
+(* refactor fetching and setting peer endoint into one function  *)
+(* move a lot of the indiviaul args into config  *)
+(* dns peer key store  *)
 
 let get_config () =
   Config.read_config ()

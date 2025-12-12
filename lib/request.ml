@@ -54,9 +54,9 @@ module Packet = struct
     |> Option.value_exn ~message:"Failed to generate mac"
   ;;
 
-  let create ~source ~dest_port ~hst_key ~dest_key ~priv_key ~pub_key =
+  let create ~source_port ~dest_port ~hst_key ~dest_key ~priv_key ~pub_key =
     let cs = Cstruct.create sizeof_t in
-    set_t_source cs source;
+    set_t_source cs source_port;
     set_t_dest cs dest_port;
     set_t_len cs sizeof_t;
     set_t_version cs version;
