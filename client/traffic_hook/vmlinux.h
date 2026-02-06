@@ -6088,6 +6088,10 @@ enum {
 };
 
 enum {
+	QUIRK_IGNORE_CHECKSUM = 0,
+};
+
+enum {
 	QUOTA_NL_A_UNSPEC = 0,
 	QUOTA_NL_A_QTYPE = 1,
 	QUOTA_NL_A_EXCESS_ID = 2,
@@ -7821,7 +7825,8 @@ enum {
 	__SCHED_FEAT_WA_BIAS = 24,
 	__SCHED_FEAT_UTIL_EST = 25,
 	__SCHED_FEAT_LATENCY_WARN = 26,
-	__SCHED_FEAT_NR = 27,
+	__SCHED_FEAT_NI_RANDOM = 27,
+	__SCHED_FEAT_NR = 28,
 };
 
 enum {
@@ -9128,6 +9133,11 @@ enum acpi_erst_instructions {
 	ACPI_ERST_SET_DST_ADDRESS_BASE = 17,
 	ACPI_ERST_MOVE_DATA = 18,
 	ACPI_ERST_INSTRUCTION_RESERVED = 19,
+};
+
+enum acpi_gpio_ignore_list {
+	ACPI_GPIO_IGNORE_WAKE = 0,
+	ACPI_GPIO_IGNORE_INTERRUPT = 1,
 };
 
 enum acpi_hest_notify_types {
@@ -15505,6 +15515,12 @@ enum hdmi_ycc_quantization_range {
 	HDMI_YCC_QUANTIZATION_RANGE_FULL = 1,
 };
 
+enum header_opt {
+	IPE_HEADER_POLICY_NAME = 0,
+	IPE_HEADER_POLICY_VERSION = 1,
+	__IPE_HEADER_MAX = 2,
+};
+
 enum hest_status {
 	HEST_ENABLED = 0,
 	HEST_DISABLED = 1,
@@ -17073,6 +17089,51 @@ enum ip_defrag_users {
 	IP_DEFRAG_VS_FWD = 196612,
 	IP_DEFRAG_AF_PACKET = 196613,
 	IP_DEFRAG_MACVLAN = 196614,
+};
+
+enum ipe_action_type {
+	IPE_ACTION_ALLOW = 0,
+	IPE_ACTION_DENY = 1,
+	__IPE_ACTION_MAX = 2,
+};
+
+enum ipe_hook_type {
+	IPE_HOOK_BPRM_CHECK = 0,
+	IPE_HOOK_MMAP = 1,
+	IPE_HOOK_MPROTECT = 2,
+	IPE_HOOK_KERNEL_READ = 3,
+	IPE_HOOK_KERNEL_LOAD = 4,
+	__IPE_HOOK_MAX = 5,
+};
+
+enum ipe_match {
+	IPE_MATCH_RULE = 0,
+	IPE_MATCH_TABLE = 1,
+	IPE_MATCH_GLOBAL = 2,
+	__IPE_MATCH_MAX = 3,
+};
+
+enum ipe_op_type {
+	IPE_OP_EXEC = 0,
+	IPE_OP_FIRMWARE = 1,
+	IPE_OP_KERNEL_MODULE = 2,
+	IPE_OP_KEXEC_IMAGE = 3,
+	IPE_OP_KEXEC_INITRAMFS = 4,
+	IPE_OP_POLICY = 5,
+	IPE_OP_X509 = 6,
+	__IPE_OP_MAX = 7,
+};
+
+enum ipe_prop_type {
+	IPE_PROP_BOOT_VERIFIED_FALSE = 0,
+	IPE_PROP_BOOT_VERIFIED_TRUE = 1,
+	IPE_PROP_DMV_ROOTHASH = 2,
+	IPE_PROP_DMV_SIG_FALSE = 3,
+	IPE_PROP_DMV_SIG_TRUE = 4,
+	IPE_PROP_FSV_DIGEST = 5,
+	IPE_PROP_FSV_SIG_FALSE = 6,
+	IPE_PROP_FSV_SIG_TRUE = 7,
+	__IPE_PROP_MAX = 8,
 };
 
 enum ipi_vector {
@@ -18852,7 +18913,6 @@ enum nfs_stat {
 	NFSERR_NOENT = 2,
 	NFSERR_IO = 5,
 	NFSERR_NXIO = 6,
-	NFSERR_EAGAIN = 11,
 	NFSERR_ACCES = 13,
 	NFSERR_EXIST = 17,
 	NFSERR_XDEV = 18,
@@ -36428,6 +36488,8 @@ struct cdev;
 
 struct fscrypt_inode_info;
 
+struct fsverity_info;
+
 struct inode {
 	umode_t i_mode;
 	short unsigned int i_opflags;
@@ -36498,6 +36560,7 @@ struct inode {
 	__u32 i_fsnotify_mask;
 	struct fsnotify_mark_connector *i_fsnotify_marks;
 	struct fscrypt_inode_info *i_crypt_info;
+	struct fsverity_info *i_verity_info;
 	void *i_private;
 };
 
@@ -37920,6 +37983,12 @@ struct blkpg_partition {
 	int pno;
 	char devname[64];
 	char volname[64];
+};
+
+struct block_buffer {
+	u32 filled;
+	bool is_root_hash;
+	u8 *data;
 };
 
 typedef int (*report_zones_cb)(struct blk_zone *, unsigned int, void *);
@@ -46921,6 +46990,7 @@ struct displayid_iter {
 	int ext_index;
 	u8 version;
 	u8 primary_use;
+	u8 quirks;
 };
 
 struct cea_db_iter {
@@ -47293,9 +47363,9 @@ struct cfs_rq {
 	unsigned int h_nr_delayed;
 	s64 avg_vruntime;
 	u64 avg_load;
-	u64 min_vruntime;
+	u64 zero_vruntime;
 	unsigned int forceidle_seq;
-	u64 min_vruntime_fi;
+	u64 zero_vruntime_fi;
 	struct rb_root_cached tasks_timeline;
 	struct sched_entity *curr;
 	struct sched_entity *next;
@@ -50154,6 +50224,12 @@ struct cpc_desc {
 	struct cpc_register_resource cpc_regs[21];
 	struct acpi_psd_package domain_info;
 	struct kobject kobj;
+};
+
+struct cper_arm_ctx_info {
+	u16 version;
+	u16 type;
+	u32 size;
 };
 
 struct cper_arm_err_info {
@@ -53451,7 +53527,6 @@ struct io_stats_per_prio {
 };
 
 struct dd_per_prio {
-	struct list_head dispatch;
 	struct rb_root sort_list[2];
 	struct list_head fifo_list[2];
 	sector_t latest_pos[2];
@@ -53503,6 +53578,7 @@ struct ddebug_table {
 };
 
 struct deadline_data {
+	struct list_head dispatch;
 	struct dd_per_prio per_prio[3];
 	enum dd_data_dir last_dir;
 	unsigned int batching;
@@ -54300,6 +54376,31 @@ struct devfreq {
 	struct thermal_cooling_device *cdev;
 	struct notifier_block nb_min;
 	struct notifier_block nb_max;
+};
+
+struct thermal_cooling_device_ops {
+	int (*get_max_state)(struct thermal_cooling_device *, long unsigned int *);
+	int (*get_cur_state)(struct thermal_cooling_device *, long unsigned int *);
+	int (*set_cur_state)(struct thermal_cooling_device *, long unsigned int);
+	int (*get_requested_power)(struct thermal_cooling_device *, u32 *);
+	int (*state2power)(struct thermal_cooling_device *, long unsigned int, u32 *);
+	int (*power2state)(struct thermal_cooling_device *, u32, long unsigned int *);
+};
+
+struct devfreq_cooling_power;
+
+struct devfreq_cooling_device {
+	struct thermal_cooling_device *cdev;
+	struct thermal_cooling_device_ops cooling_ops;
+	struct devfreq *devfreq;
+	long unsigned int cooling_state;
+	u32 *freq_table;
+	size_t max_state;
+	struct devfreq_cooling_power *power_ops;
+	u32 res_util;
+	int capped_state;
+	struct dev_pm_qos_request req_max_freq;
+	struct em_perf_domain *em_pd;
 };
 
 struct devfreq_cooling_power {
@@ -55241,6 +55342,12 @@ struct die_args {
 	int signr;
 };
 
+struct digest_info {
+	const char *alg;
+	const u8 *digest;
+	size_t digest_len;
+};
+
 struct dim_stats {
 	int ppms;
 	int bpms;
@@ -55462,6 +55569,16 @@ struct displayid_header {
 	u8 ext_count;
 };
 
+struct drm_edid_ident {
+	u32 panel_id;
+	const char *name;
+};
+
+struct displayid_quirk {
+	const struct drm_edid_ident ident;
+	u8 quirks;
+};
+
 struct displayid_tiled_block {
 	struct displayid_block base;
 	u8 tile_cap;
@@ -55509,6 +55626,12 @@ struct dm_hw_stat_delta {
 struct dm_kobject_holder {
 	struct kobject kobj;
 	struct completion completion;
+};
+
+struct dm_verity_digest {
+	const char *alg;
+	const u8 *digest;
+	size_t digest_len;
 };
 
 typedef void (*dma_async_tx_callback)(void *);
@@ -57864,11 +57987,6 @@ struct drm_edid {
 	const struct edid *edid;
 };
 
-struct drm_edid_ident {
-	u32 panel_id;
-	const char *name;
-};
-
 struct drm_edid_match_closure {
 	const struct drm_edid_ident *ident;
 	bool matched;
@@ -59873,7 +59991,10 @@ struct uncached_list;
 struct lwtunnel_state;
 
 struct dst_entry {
-	struct net_device *dev;
+	union {
+		struct net_device *dev;
+		struct net_device *dev_rcu;
+	};
 	struct dst_ops *ops;
 	long unsigned int _metrics;
 	long unsigned int expires;
@@ -64016,6 +64137,7 @@ struct ftrace_graph_ent_entry {
 
 struct ftrace_graph_ret {
 	long unsigned int func;
+	long unsigned int retval;
 	int depth;
 	unsigned int overrun;
 	long long unsigned int calltime;
@@ -66911,6 +67033,93 @@ struct fsnotify_sb_info {
 struct fsuuid2 {
 	__u8 len;
 	__u8 uuid[16];
+};
+
+struct fsverity_descriptor {
+	__u8 version;
+	__u8 hash_algorithm;
+	__u8 log_blocksize;
+	__u8 salt_size;
+	__le32 sig_size;
+	__le64 data_size;
+	__u8 root_hash[64];
+	__u8 salt[32];
+	__u8 __reserved[144];
+	__u8 signature[0];
+};
+
+struct fsverity_digest {
+	__u16 digest_algorithm;
+	__u16 digest_size;
+	__u8 digest[0];
+};
+
+struct fsverity_enable_arg {
+	__u32 version;
+	__u32 hash_algorithm;
+	__u32 block_size;
+	__u32 salt_size;
+	__u64 salt_ptr;
+	__u32 sig_size;
+	__u32 __reserved1;
+	__u64 sig_ptr;
+	__u64 __reserved2[11];
+};
+
+struct fsverity_formatted_digest {
+	char magic[8];
+	__le16 digest_algorithm;
+	__le16 digest_size;
+	__u8 digest[0];
+};
+
+struct fsverity_hash_alg {
+	struct crypto_shash *tfm;
+	const char *name;
+	unsigned int digest_size;
+	unsigned int block_size;
+	enum hash_algo algo_id;
+};
+
+struct merkle_tree_params {
+	const struct fsverity_hash_alg *hash_alg;
+	const u8 *hashstate;
+	unsigned int digest_size;
+	unsigned int block_size;
+	unsigned int hashes_per_block;
+	unsigned int blocks_per_page;
+	u8 log_digestsize;
+	u8 log_blocksize;
+	u8 log_arity;
+	u8 log_blocks_per_page;
+	unsigned int num_levels;
+	u64 tree_size;
+	long unsigned int tree_pages;
+	long unsigned int level_start[8];
+};
+
+struct fsverity_info {
+	struct merkle_tree_params tree_params;
+	u8 root_hash[64];
+	u8 file_digest[64];
+	const struct inode *inode;
+	long unsigned int *hash_block_verified;
+};
+
+struct fsverity_operations {
+	int (*begin_enable_verity)(struct file *);
+	int (*end_enable_verity)(struct file *, const void *, size_t, u64);
+	int (*get_verity_descriptor)(struct inode *, void *, size_t);
+	struct page * (*read_merkle_tree_page)(struct inode *, long unsigned int, long unsigned int);
+	int (*write_merkle_tree_block)(struct inode *, const void *, u64, unsigned int);
+};
+
+struct fsverity_read_metadata_arg {
+	__u64 metadata_type;
+	__u64 offset;
+	__u64 length;
+	__u64 buf_ptr;
+	__u64 __reserved;
 };
 
 struct fsxattr {
@@ -77658,6 +77867,74 @@ struct ipcm_cookie {
 	__u16 gso_size;
 };
 
+struct ipe_bdev {
+	struct digest_info *root_hash;
+};
+
+struct ipe_inode;
+
+struct ipe_eval_ctx {
+	enum ipe_op_type op;
+	enum ipe_hook_type hook;
+	const struct file *file;
+	bool initramfs;
+	const struct ipe_bdev *ipe_bdev;
+	const struct inode *ino;
+	const struct ipe_inode *ipe_inode;
+};
+
+struct ipe_inode {
+	bool fs_verity_signed;
+};
+
+struct ipe_op_table {
+	struct list_head rules;
+	enum ipe_action_type default_action;
+};
+
+struct ipe_parsed_policy {
+	const char *name;
+	struct {
+		u16 major;
+		u16 minor;
+		u16 rev;
+	} version;
+	enum ipe_action_type global_default_action;
+	struct ipe_op_table rules[7];
+};
+
+struct ipe_policy {
+	const char *pkcs7;
+	size_t pkcs7len;
+	const char *text;
+	size_t textlen;
+	struct ipe_parsed_policy *parsed;
+	struct dentry *policyfs;
+};
+
+struct ipe_prop {
+	struct list_head next;
+	enum ipe_prop_type type;
+	void *value;
+};
+
+struct ipe_rule {
+	enum ipe_op_type op;
+	enum ipe_action_type action;
+	struct list_head props;
+	struct list_head next;
+};
+
+struct ipe_superblock {
+	bool initramfs;
+};
+
+struct ipefs_file {
+	const char *name;
+	umode_t access;
+	const struct file_operations *fops;
+};
+
 struct ipfrag_skb_cb {
 	union {
 		struct inet_skb_parm h4;
@@ -83128,259 +83405,259 @@ struct lsm_static_call {
 };
 
 struct lsm_static_calls_table {
-	struct lsm_static_call binder_set_context_mgr[6];
-	struct lsm_static_call binder_transaction[6];
-	struct lsm_static_call binder_transfer_binder[6];
-	struct lsm_static_call binder_transfer_file[6];
-	struct lsm_static_call ptrace_access_check[6];
-	struct lsm_static_call ptrace_traceme[6];
-	struct lsm_static_call capget[6];
-	struct lsm_static_call capset[6];
-	struct lsm_static_call capable[6];
-	struct lsm_static_call quotactl[6];
-	struct lsm_static_call quota_on[6];
-	struct lsm_static_call syslog[6];
-	struct lsm_static_call settime[6];
-	struct lsm_static_call vm_enough_memory[6];
-	struct lsm_static_call bprm_creds_for_exec[6];
-	struct lsm_static_call bprm_creds_from_file[6];
-	struct lsm_static_call bprm_check_security[6];
-	struct lsm_static_call bprm_committing_creds[6];
-	struct lsm_static_call bprm_committed_creds[6];
-	struct lsm_static_call fs_context_submount[6];
-	struct lsm_static_call fs_context_dup[6];
-	struct lsm_static_call fs_context_parse_param[6];
-	struct lsm_static_call sb_alloc_security[6];
-	struct lsm_static_call sb_delete[6];
-	struct lsm_static_call sb_free_security[6];
-	struct lsm_static_call sb_free_mnt_opts[6];
-	struct lsm_static_call sb_eat_lsm_opts[6];
-	struct lsm_static_call sb_mnt_opts_compat[6];
-	struct lsm_static_call sb_remount[6];
-	struct lsm_static_call sb_kern_mount[6];
-	struct lsm_static_call sb_show_options[6];
-	struct lsm_static_call sb_statfs[6];
-	struct lsm_static_call sb_mount[6];
-	struct lsm_static_call sb_umount[6];
-	struct lsm_static_call sb_pivotroot[6];
-	struct lsm_static_call sb_set_mnt_opts[6];
-	struct lsm_static_call sb_clone_mnt_opts[6];
-	struct lsm_static_call move_mount[6];
-	struct lsm_static_call dentry_init_security[6];
-	struct lsm_static_call dentry_create_files_as[6];
-	struct lsm_static_call path_unlink[6];
-	struct lsm_static_call path_mkdir[6];
-	struct lsm_static_call path_rmdir[6];
-	struct lsm_static_call path_mknod[6];
-	struct lsm_static_call path_post_mknod[6];
-	struct lsm_static_call path_truncate[6];
-	struct lsm_static_call path_symlink[6];
-	struct lsm_static_call path_link[6];
-	struct lsm_static_call path_rename[6];
-	struct lsm_static_call path_chmod[6];
-	struct lsm_static_call path_chown[6];
-	struct lsm_static_call path_chroot[6];
-	struct lsm_static_call path_notify[6];
-	struct lsm_static_call inode_alloc_security[6];
-	struct lsm_static_call inode_free_security[6];
-	struct lsm_static_call inode_free_security_rcu[6];
-	struct lsm_static_call inode_init_security[6];
-	struct lsm_static_call inode_init_security_anon[6];
-	struct lsm_static_call inode_create[6];
-	struct lsm_static_call inode_post_create_tmpfile[6];
-	struct lsm_static_call inode_link[6];
-	struct lsm_static_call inode_unlink[6];
-	struct lsm_static_call inode_symlink[6];
-	struct lsm_static_call inode_mkdir[6];
-	struct lsm_static_call inode_rmdir[6];
-	struct lsm_static_call inode_mknod[6];
-	struct lsm_static_call inode_rename[6];
-	struct lsm_static_call inode_readlink[6];
-	struct lsm_static_call inode_follow_link[6];
-	struct lsm_static_call inode_permission[6];
-	struct lsm_static_call inode_setattr[6];
-	struct lsm_static_call inode_post_setattr[6];
-	struct lsm_static_call inode_getattr[6];
-	struct lsm_static_call inode_xattr_skipcap[6];
-	struct lsm_static_call inode_setxattr[6];
-	struct lsm_static_call inode_post_setxattr[6];
-	struct lsm_static_call inode_getxattr[6];
-	struct lsm_static_call inode_listxattr[6];
-	struct lsm_static_call inode_removexattr[6];
-	struct lsm_static_call inode_post_removexattr[6];
-	struct lsm_static_call inode_set_acl[6];
-	struct lsm_static_call inode_post_set_acl[6];
-	struct lsm_static_call inode_get_acl[6];
-	struct lsm_static_call inode_remove_acl[6];
-	struct lsm_static_call inode_post_remove_acl[6];
-	struct lsm_static_call inode_need_killpriv[6];
-	struct lsm_static_call inode_killpriv[6];
-	struct lsm_static_call inode_getsecurity[6];
-	struct lsm_static_call inode_setsecurity[6];
-	struct lsm_static_call inode_listsecurity[6];
-	struct lsm_static_call inode_getsecid[6];
-	struct lsm_static_call inode_copy_up[6];
-	struct lsm_static_call inode_copy_up_xattr[6];
-	struct lsm_static_call inode_setintegrity[6];
-	struct lsm_static_call kernfs_init_security[6];
-	struct lsm_static_call file_permission[6];
-	struct lsm_static_call file_alloc_security[6];
-	struct lsm_static_call file_release[6];
-	struct lsm_static_call file_free_security[6];
-	struct lsm_static_call file_ioctl[6];
-	struct lsm_static_call file_ioctl_compat[6];
-	struct lsm_static_call mmap_addr[6];
-	struct lsm_static_call mmap_file[6];
-	struct lsm_static_call file_mprotect[6];
-	struct lsm_static_call file_lock[6];
-	struct lsm_static_call file_fcntl[6];
-	struct lsm_static_call file_set_fowner[6];
-	struct lsm_static_call file_send_sigiotask[6];
-	struct lsm_static_call file_receive[6];
-	struct lsm_static_call file_open[6];
-	struct lsm_static_call file_post_open[6];
-	struct lsm_static_call file_truncate[6];
-	struct lsm_static_call task_alloc[6];
-	struct lsm_static_call task_free[6];
-	struct lsm_static_call cred_alloc_blank[6];
-	struct lsm_static_call cred_free[6];
-	struct lsm_static_call cred_prepare[6];
-	struct lsm_static_call cred_transfer[6];
-	struct lsm_static_call cred_getsecid[6];
-	struct lsm_static_call kernel_act_as[6];
-	struct lsm_static_call kernel_create_files_as[6];
-	struct lsm_static_call kernel_module_request[6];
-	struct lsm_static_call kernel_load_data[6];
-	struct lsm_static_call kernel_post_load_data[6];
-	struct lsm_static_call kernel_read_file[6];
-	struct lsm_static_call kernel_post_read_file[6];
-	struct lsm_static_call task_fix_setuid[6];
-	struct lsm_static_call task_fix_setgid[6];
-	struct lsm_static_call task_fix_setgroups[6];
-	struct lsm_static_call task_setpgid[6];
-	struct lsm_static_call task_getpgid[6];
-	struct lsm_static_call task_getsid[6];
-	struct lsm_static_call current_getsecid_subj[6];
-	struct lsm_static_call task_getsecid_obj[6];
-	struct lsm_static_call task_setnice[6];
-	struct lsm_static_call task_setioprio[6];
-	struct lsm_static_call task_getioprio[6];
-	struct lsm_static_call task_prlimit[6];
-	struct lsm_static_call task_setrlimit[6];
-	struct lsm_static_call task_setscheduler[6];
-	struct lsm_static_call task_getscheduler[6];
-	struct lsm_static_call task_movememory[6];
-	struct lsm_static_call task_kill[6];
-	struct lsm_static_call task_prctl[6];
-	struct lsm_static_call task_to_inode[6];
-	struct lsm_static_call userns_create[6];
-	struct lsm_static_call ipc_permission[6];
-	struct lsm_static_call ipc_getsecid[6];
-	struct lsm_static_call msg_msg_alloc_security[6];
-	struct lsm_static_call msg_msg_free_security[6];
-	struct lsm_static_call msg_queue_alloc_security[6];
-	struct lsm_static_call msg_queue_free_security[6];
-	struct lsm_static_call msg_queue_associate[6];
-	struct lsm_static_call msg_queue_msgctl[6];
-	struct lsm_static_call msg_queue_msgsnd[6];
-	struct lsm_static_call msg_queue_msgrcv[6];
-	struct lsm_static_call shm_alloc_security[6];
-	struct lsm_static_call shm_free_security[6];
-	struct lsm_static_call shm_associate[6];
-	struct lsm_static_call shm_shmctl[6];
-	struct lsm_static_call shm_shmat[6];
-	struct lsm_static_call sem_alloc_security[6];
-	struct lsm_static_call sem_free_security[6];
-	struct lsm_static_call sem_associate[6];
-	struct lsm_static_call sem_semctl[6];
-	struct lsm_static_call sem_semop[6];
-	struct lsm_static_call netlink_send[6];
-	struct lsm_static_call d_instantiate[6];
-	struct lsm_static_call getselfattr[6];
-	struct lsm_static_call setselfattr[6];
-	struct lsm_static_call getprocattr[6];
-	struct lsm_static_call setprocattr[6];
-	struct lsm_static_call ismaclabel[6];
-	struct lsm_static_call secid_to_secctx[6];
-	struct lsm_static_call secctx_to_secid[6];
-	struct lsm_static_call release_secctx[6];
-	struct lsm_static_call inode_invalidate_secctx[6];
-	struct lsm_static_call inode_notifysecctx[6];
-	struct lsm_static_call inode_setsecctx[6];
-	struct lsm_static_call inode_getsecctx[6];
-	struct lsm_static_call post_notification[6];
-	struct lsm_static_call unix_stream_connect[6];
-	struct lsm_static_call unix_may_send[6];
-	struct lsm_static_call socket_create[6];
-	struct lsm_static_call socket_post_create[6];
-	struct lsm_static_call socket_socketpair[6];
-	struct lsm_static_call socket_bind[6];
-	struct lsm_static_call socket_connect[6];
-	struct lsm_static_call socket_listen[6];
-	struct lsm_static_call socket_accept[6];
-	struct lsm_static_call socket_sendmsg[6];
-	struct lsm_static_call socket_recvmsg[6];
-	struct lsm_static_call socket_getsockname[6];
-	struct lsm_static_call socket_getpeername[6];
-	struct lsm_static_call socket_getsockopt[6];
-	struct lsm_static_call socket_setsockopt[6];
-	struct lsm_static_call socket_shutdown[6];
-	struct lsm_static_call socket_sock_rcv_skb[6];
-	struct lsm_static_call socket_getpeersec_stream[6];
-	struct lsm_static_call socket_getpeersec_dgram[6];
-	struct lsm_static_call sk_alloc_security[6];
-	struct lsm_static_call sk_free_security[6];
-	struct lsm_static_call sk_clone_security[6];
-	struct lsm_static_call sk_getsecid[6];
-	struct lsm_static_call sock_graft[6];
-	struct lsm_static_call inet_conn_request[6];
-	struct lsm_static_call inet_csk_clone[6];
-	struct lsm_static_call inet_conn_established[6];
-	struct lsm_static_call secmark_relabel_packet[6];
-	struct lsm_static_call secmark_refcount_inc[6];
-	struct lsm_static_call secmark_refcount_dec[6];
-	struct lsm_static_call req_classify_flow[6];
-	struct lsm_static_call tun_dev_alloc_security[6];
-	struct lsm_static_call tun_dev_create[6];
-	struct lsm_static_call tun_dev_attach_queue[6];
-	struct lsm_static_call tun_dev_attach[6];
-	struct lsm_static_call tun_dev_open[6];
-	struct lsm_static_call sctp_assoc_request[6];
-	struct lsm_static_call sctp_bind_connect[6];
-	struct lsm_static_call sctp_sk_clone[6];
-	struct lsm_static_call sctp_assoc_established[6];
-	struct lsm_static_call mptcp_add_subflow[6];
-	struct lsm_static_call key_alloc[6];
-	struct lsm_static_call key_permission[6];
-	struct lsm_static_call key_getsecurity[6];
-	struct lsm_static_call key_post_create_or_update[6];
-	struct lsm_static_call audit_rule_init[6];
-	struct lsm_static_call audit_rule_known[6];
-	struct lsm_static_call audit_rule_match[6];
-	struct lsm_static_call audit_rule_free[6];
-	struct lsm_static_call bpf[6];
-	struct lsm_static_call bpf_map[6];
-	struct lsm_static_call bpf_prog[6];
-	struct lsm_static_call bpf_map_create[6];
-	struct lsm_static_call bpf_map_free[6];
-	struct lsm_static_call bpf_prog_load[6];
-	struct lsm_static_call bpf_prog_free[6];
-	struct lsm_static_call bpf_token_create[6];
-	struct lsm_static_call bpf_token_free[6];
-	struct lsm_static_call bpf_token_cmd[6];
-	struct lsm_static_call bpf_token_capable[6];
-	struct lsm_static_call locked_down[6];
-	struct lsm_static_call perf_event_open[6];
-	struct lsm_static_call perf_event_alloc[6];
-	struct lsm_static_call perf_event_read[6];
-	struct lsm_static_call perf_event_write[6];
-	struct lsm_static_call uring_override_creds[6];
-	struct lsm_static_call uring_sqpoll[6];
-	struct lsm_static_call uring_cmd[6];
-	struct lsm_static_call initramfs_populated[6];
-	struct lsm_static_call bdev_alloc_security[6];
-	struct lsm_static_call bdev_free_security[6];
-	struct lsm_static_call bdev_setintegrity[6];
+	struct lsm_static_call binder_set_context_mgr[7];
+	struct lsm_static_call binder_transaction[7];
+	struct lsm_static_call binder_transfer_binder[7];
+	struct lsm_static_call binder_transfer_file[7];
+	struct lsm_static_call ptrace_access_check[7];
+	struct lsm_static_call ptrace_traceme[7];
+	struct lsm_static_call capget[7];
+	struct lsm_static_call capset[7];
+	struct lsm_static_call capable[7];
+	struct lsm_static_call quotactl[7];
+	struct lsm_static_call quota_on[7];
+	struct lsm_static_call syslog[7];
+	struct lsm_static_call settime[7];
+	struct lsm_static_call vm_enough_memory[7];
+	struct lsm_static_call bprm_creds_for_exec[7];
+	struct lsm_static_call bprm_creds_from_file[7];
+	struct lsm_static_call bprm_check_security[7];
+	struct lsm_static_call bprm_committing_creds[7];
+	struct lsm_static_call bprm_committed_creds[7];
+	struct lsm_static_call fs_context_submount[7];
+	struct lsm_static_call fs_context_dup[7];
+	struct lsm_static_call fs_context_parse_param[7];
+	struct lsm_static_call sb_alloc_security[7];
+	struct lsm_static_call sb_delete[7];
+	struct lsm_static_call sb_free_security[7];
+	struct lsm_static_call sb_free_mnt_opts[7];
+	struct lsm_static_call sb_eat_lsm_opts[7];
+	struct lsm_static_call sb_mnt_opts_compat[7];
+	struct lsm_static_call sb_remount[7];
+	struct lsm_static_call sb_kern_mount[7];
+	struct lsm_static_call sb_show_options[7];
+	struct lsm_static_call sb_statfs[7];
+	struct lsm_static_call sb_mount[7];
+	struct lsm_static_call sb_umount[7];
+	struct lsm_static_call sb_pivotroot[7];
+	struct lsm_static_call sb_set_mnt_opts[7];
+	struct lsm_static_call sb_clone_mnt_opts[7];
+	struct lsm_static_call move_mount[7];
+	struct lsm_static_call dentry_init_security[7];
+	struct lsm_static_call dentry_create_files_as[7];
+	struct lsm_static_call path_unlink[7];
+	struct lsm_static_call path_mkdir[7];
+	struct lsm_static_call path_rmdir[7];
+	struct lsm_static_call path_mknod[7];
+	struct lsm_static_call path_post_mknod[7];
+	struct lsm_static_call path_truncate[7];
+	struct lsm_static_call path_symlink[7];
+	struct lsm_static_call path_link[7];
+	struct lsm_static_call path_rename[7];
+	struct lsm_static_call path_chmod[7];
+	struct lsm_static_call path_chown[7];
+	struct lsm_static_call path_chroot[7];
+	struct lsm_static_call path_notify[7];
+	struct lsm_static_call inode_alloc_security[7];
+	struct lsm_static_call inode_free_security[7];
+	struct lsm_static_call inode_free_security_rcu[7];
+	struct lsm_static_call inode_init_security[7];
+	struct lsm_static_call inode_init_security_anon[7];
+	struct lsm_static_call inode_create[7];
+	struct lsm_static_call inode_post_create_tmpfile[7];
+	struct lsm_static_call inode_link[7];
+	struct lsm_static_call inode_unlink[7];
+	struct lsm_static_call inode_symlink[7];
+	struct lsm_static_call inode_mkdir[7];
+	struct lsm_static_call inode_rmdir[7];
+	struct lsm_static_call inode_mknod[7];
+	struct lsm_static_call inode_rename[7];
+	struct lsm_static_call inode_readlink[7];
+	struct lsm_static_call inode_follow_link[7];
+	struct lsm_static_call inode_permission[7];
+	struct lsm_static_call inode_setattr[7];
+	struct lsm_static_call inode_post_setattr[7];
+	struct lsm_static_call inode_getattr[7];
+	struct lsm_static_call inode_xattr_skipcap[7];
+	struct lsm_static_call inode_setxattr[7];
+	struct lsm_static_call inode_post_setxattr[7];
+	struct lsm_static_call inode_getxattr[7];
+	struct lsm_static_call inode_listxattr[7];
+	struct lsm_static_call inode_removexattr[7];
+	struct lsm_static_call inode_post_removexattr[7];
+	struct lsm_static_call inode_set_acl[7];
+	struct lsm_static_call inode_post_set_acl[7];
+	struct lsm_static_call inode_get_acl[7];
+	struct lsm_static_call inode_remove_acl[7];
+	struct lsm_static_call inode_post_remove_acl[7];
+	struct lsm_static_call inode_need_killpriv[7];
+	struct lsm_static_call inode_killpriv[7];
+	struct lsm_static_call inode_getsecurity[7];
+	struct lsm_static_call inode_setsecurity[7];
+	struct lsm_static_call inode_listsecurity[7];
+	struct lsm_static_call inode_getsecid[7];
+	struct lsm_static_call inode_copy_up[7];
+	struct lsm_static_call inode_copy_up_xattr[7];
+	struct lsm_static_call inode_setintegrity[7];
+	struct lsm_static_call kernfs_init_security[7];
+	struct lsm_static_call file_permission[7];
+	struct lsm_static_call file_alloc_security[7];
+	struct lsm_static_call file_release[7];
+	struct lsm_static_call file_free_security[7];
+	struct lsm_static_call file_ioctl[7];
+	struct lsm_static_call file_ioctl_compat[7];
+	struct lsm_static_call mmap_addr[7];
+	struct lsm_static_call mmap_file[7];
+	struct lsm_static_call file_mprotect[7];
+	struct lsm_static_call file_lock[7];
+	struct lsm_static_call file_fcntl[7];
+	struct lsm_static_call file_set_fowner[7];
+	struct lsm_static_call file_send_sigiotask[7];
+	struct lsm_static_call file_receive[7];
+	struct lsm_static_call file_open[7];
+	struct lsm_static_call file_post_open[7];
+	struct lsm_static_call file_truncate[7];
+	struct lsm_static_call task_alloc[7];
+	struct lsm_static_call task_free[7];
+	struct lsm_static_call cred_alloc_blank[7];
+	struct lsm_static_call cred_free[7];
+	struct lsm_static_call cred_prepare[7];
+	struct lsm_static_call cred_transfer[7];
+	struct lsm_static_call cred_getsecid[7];
+	struct lsm_static_call kernel_act_as[7];
+	struct lsm_static_call kernel_create_files_as[7];
+	struct lsm_static_call kernel_module_request[7];
+	struct lsm_static_call kernel_load_data[7];
+	struct lsm_static_call kernel_post_load_data[7];
+	struct lsm_static_call kernel_read_file[7];
+	struct lsm_static_call kernel_post_read_file[7];
+	struct lsm_static_call task_fix_setuid[7];
+	struct lsm_static_call task_fix_setgid[7];
+	struct lsm_static_call task_fix_setgroups[7];
+	struct lsm_static_call task_setpgid[7];
+	struct lsm_static_call task_getpgid[7];
+	struct lsm_static_call task_getsid[7];
+	struct lsm_static_call current_getsecid_subj[7];
+	struct lsm_static_call task_getsecid_obj[7];
+	struct lsm_static_call task_setnice[7];
+	struct lsm_static_call task_setioprio[7];
+	struct lsm_static_call task_getioprio[7];
+	struct lsm_static_call task_prlimit[7];
+	struct lsm_static_call task_setrlimit[7];
+	struct lsm_static_call task_setscheduler[7];
+	struct lsm_static_call task_getscheduler[7];
+	struct lsm_static_call task_movememory[7];
+	struct lsm_static_call task_kill[7];
+	struct lsm_static_call task_prctl[7];
+	struct lsm_static_call task_to_inode[7];
+	struct lsm_static_call userns_create[7];
+	struct lsm_static_call ipc_permission[7];
+	struct lsm_static_call ipc_getsecid[7];
+	struct lsm_static_call msg_msg_alloc_security[7];
+	struct lsm_static_call msg_msg_free_security[7];
+	struct lsm_static_call msg_queue_alloc_security[7];
+	struct lsm_static_call msg_queue_free_security[7];
+	struct lsm_static_call msg_queue_associate[7];
+	struct lsm_static_call msg_queue_msgctl[7];
+	struct lsm_static_call msg_queue_msgsnd[7];
+	struct lsm_static_call msg_queue_msgrcv[7];
+	struct lsm_static_call shm_alloc_security[7];
+	struct lsm_static_call shm_free_security[7];
+	struct lsm_static_call shm_associate[7];
+	struct lsm_static_call shm_shmctl[7];
+	struct lsm_static_call shm_shmat[7];
+	struct lsm_static_call sem_alloc_security[7];
+	struct lsm_static_call sem_free_security[7];
+	struct lsm_static_call sem_associate[7];
+	struct lsm_static_call sem_semctl[7];
+	struct lsm_static_call sem_semop[7];
+	struct lsm_static_call netlink_send[7];
+	struct lsm_static_call d_instantiate[7];
+	struct lsm_static_call getselfattr[7];
+	struct lsm_static_call setselfattr[7];
+	struct lsm_static_call getprocattr[7];
+	struct lsm_static_call setprocattr[7];
+	struct lsm_static_call ismaclabel[7];
+	struct lsm_static_call secid_to_secctx[7];
+	struct lsm_static_call secctx_to_secid[7];
+	struct lsm_static_call release_secctx[7];
+	struct lsm_static_call inode_invalidate_secctx[7];
+	struct lsm_static_call inode_notifysecctx[7];
+	struct lsm_static_call inode_setsecctx[7];
+	struct lsm_static_call inode_getsecctx[7];
+	struct lsm_static_call post_notification[7];
+	struct lsm_static_call unix_stream_connect[7];
+	struct lsm_static_call unix_may_send[7];
+	struct lsm_static_call socket_create[7];
+	struct lsm_static_call socket_post_create[7];
+	struct lsm_static_call socket_socketpair[7];
+	struct lsm_static_call socket_bind[7];
+	struct lsm_static_call socket_connect[7];
+	struct lsm_static_call socket_listen[7];
+	struct lsm_static_call socket_accept[7];
+	struct lsm_static_call socket_sendmsg[7];
+	struct lsm_static_call socket_recvmsg[7];
+	struct lsm_static_call socket_getsockname[7];
+	struct lsm_static_call socket_getpeername[7];
+	struct lsm_static_call socket_getsockopt[7];
+	struct lsm_static_call socket_setsockopt[7];
+	struct lsm_static_call socket_shutdown[7];
+	struct lsm_static_call socket_sock_rcv_skb[7];
+	struct lsm_static_call socket_getpeersec_stream[7];
+	struct lsm_static_call socket_getpeersec_dgram[7];
+	struct lsm_static_call sk_alloc_security[7];
+	struct lsm_static_call sk_free_security[7];
+	struct lsm_static_call sk_clone_security[7];
+	struct lsm_static_call sk_getsecid[7];
+	struct lsm_static_call sock_graft[7];
+	struct lsm_static_call inet_conn_request[7];
+	struct lsm_static_call inet_csk_clone[7];
+	struct lsm_static_call inet_conn_established[7];
+	struct lsm_static_call secmark_relabel_packet[7];
+	struct lsm_static_call secmark_refcount_inc[7];
+	struct lsm_static_call secmark_refcount_dec[7];
+	struct lsm_static_call req_classify_flow[7];
+	struct lsm_static_call tun_dev_alloc_security[7];
+	struct lsm_static_call tun_dev_create[7];
+	struct lsm_static_call tun_dev_attach_queue[7];
+	struct lsm_static_call tun_dev_attach[7];
+	struct lsm_static_call tun_dev_open[7];
+	struct lsm_static_call sctp_assoc_request[7];
+	struct lsm_static_call sctp_bind_connect[7];
+	struct lsm_static_call sctp_sk_clone[7];
+	struct lsm_static_call sctp_assoc_established[7];
+	struct lsm_static_call mptcp_add_subflow[7];
+	struct lsm_static_call key_alloc[7];
+	struct lsm_static_call key_permission[7];
+	struct lsm_static_call key_getsecurity[7];
+	struct lsm_static_call key_post_create_or_update[7];
+	struct lsm_static_call audit_rule_init[7];
+	struct lsm_static_call audit_rule_known[7];
+	struct lsm_static_call audit_rule_match[7];
+	struct lsm_static_call audit_rule_free[7];
+	struct lsm_static_call bpf[7];
+	struct lsm_static_call bpf_map[7];
+	struct lsm_static_call bpf_prog[7];
+	struct lsm_static_call bpf_map_create[7];
+	struct lsm_static_call bpf_map_free[7];
+	struct lsm_static_call bpf_prog_load[7];
+	struct lsm_static_call bpf_prog_free[7];
+	struct lsm_static_call bpf_token_create[7];
+	struct lsm_static_call bpf_token_free[7];
+	struct lsm_static_call bpf_token_cmd[7];
+	struct lsm_static_call bpf_token_capable[7];
+	struct lsm_static_call locked_down[7];
+	struct lsm_static_call perf_event_open[7];
+	struct lsm_static_call perf_event_alloc[7];
+	struct lsm_static_call perf_event_read[7];
+	struct lsm_static_call perf_event_write[7];
+	struct lsm_static_call uring_override_creds[7];
+	struct lsm_static_call uring_sqpoll[7];
+	struct lsm_static_call uring_cmd[7];
+	struct lsm_static_call initramfs_populated[7];
+	struct lsm_static_call bdev_alloc_security[7];
+	struct lsm_static_call bdev_free_security[7];
+	struct lsm_static_call bdev_setintegrity[7];
 };
 
 struct lwq {
@@ -86150,6 +86427,7 @@ struct mptcp_sock {
 	u8 in_accept_queue: 1;
 	u8 free_first: 1;
 	u8 rcvspace_init: 1;
+	u8 fastclosing: 1;
 	u32 notsent_lowat;
 	int keepalive_cnt;
 	int keepalive_idle;
@@ -90455,7 +90733,7 @@ struct nfs_fsid {
 };
 
 struct nfs_fattr {
-	unsigned int valid;
+	__u64 valid;
 	umode_t mode;
 	__u32 nlink;
 	kuid_t uid;
@@ -90883,8 +91161,9 @@ struct nfs_server {
 	atomic_long_t writeback;
 	unsigned int write_congested;
 	unsigned int flags;
-	unsigned int fattr_valid;
+	unsigned int automount_inherit;
 	unsigned int caps;
+	__u64 fattr_valid;
 	unsigned int rsize;
 	unsigned int rpages;
 	unsigned int wsize;
@@ -96516,6 +96795,7 @@ struct posix_clock {
 
 struct posix_clock_context {
 	struct posix_clock *clk;
+	struct file *fp;
 	void *private_clkdata;
 };
 
@@ -96550,6 +96830,30 @@ struct posix_msg_tree_node {
 struct postprocess_bh_ctx {
 	struct work_struct work;
 	struct buffer_head *bh;
+};
+
+struct power_actor {
+	u32 req_power;
+	u32 max_power;
+	u32 granted_power;
+	u32 extra_actor_power;
+	u32 weighted_req_power;
+};
+
+struct thermal_trip;
+
+struct power_allocator_params {
+	bool allocated_tzp;
+	bool update_cdevs;
+	s64 err_integral;
+	s32 prev_err;
+	u32 sustainable_power;
+	const struct thermal_trip *trip_switch_on;
+	const struct thermal_trip *trip_max;
+	int total_weight;
+	unsigned int num_actors;
+	unsigned int buffer_size;
+	struct power_actor *power;
 };
 
 struct power_supply_desc;
@@ -102299,6 +102603,9 @@ struct sched_domain {
 	long unsigned int last_balance;
 	unsigned int balance_interval;
 	unsigned int nr_balance_failed;
+	unsigned int newidle_call;
+	unsigned int newidle_success;
+	unsigned int newidle_ratio;
 	u64 max_newidle_lb_cost;
 	long unsigned int last_decay_max_lb_cost;
 	unsigned int lb_count[3];
@@ -106497,7 +106804,6 @@ struct socket_alloc {
 	struct inode vfs_inode;
 	long: 64;
 	long: 64;
-	long: 64;
 };
 
 struct sockmap_link {
@@ -106691,6 +106997,8 @@ struct spi_controller {
 struct spi_controller_mem_caps {
 	bool dtr;
 	bool ecc;
+	bool swap16;
+	bool per_op_freq;
 };
 
 struct spi_mem;
@@ -106782,7 +107090,8 @@ struct spi_mem_op {
 		u8 buswidth;
 		u8 dtr: 1;
 		u8 ecc: 1;
-		u8 __pad: 6;
+		u8 swap16: 1;
+		u8 __pad: 5;
 		enum spi_mem_data_dir dir;
 		unsigned int nbytes;
 		union {
@@ -106790,6 +107099,7 @@ struct spi_mem_op {
 			const void *out;
 		} buf;
 	} data;
+	unsigned int max_freq;
 };
 
 struct spi_mem_dirmap_info {
@@ -107431,6 +107741,7 @@ struct super_block {
 	const struct xattr_handler * const *s_xattr;
 	const struct fscrypt_operations *s_cop;
 	struct fscrypt_keyring *s_master_keys;
+	const struct fsverity_operations *s_vop;
 	struct unicode_map *s_encoding;
 	__u16 s_encoding_flags;
 	struct hlist_bl_head s_roots;
@@ -107470,7 +107781,6 @@ struct super_block {
 	struct work_struct destroy_work;
 	struct mutex s_sync_lock;
 	int s_stack_depth;
-	long: 64;
 	long: 64;
 	spinlock_t s_inode_list_lock;
 	struct list_head s_inodes;
@@ -110566,8 +110876,6 @@ struct thermal_attr {
 	char name[20];
 };
 
-struct thermal_cooling_device_ops;
-
 struct thermal_cooling_device {
 	int id;
 	const char *type;
@@ -110583,15 +110891,6 @@ struct thermal_cooling_device {
 	struct list_head node;
 };
 
-struct thermal_cooling_device_ops {
-	int (*get_max_state)(struct thermal_cooling_device *, long unsigned int *);
-	int (*get_cur_state)(struct thermal_cooling_device *, long unsigned int *);
-	int (*set_cur_state)(struct thermal_cooling_device *, long unsigned int);
-	int (*get_requested_power)(struct thermal_cooling_device *, u32 *);
-	int (*state2power)(struct thermal_cooling_device *, long unsigned int, u32 *);
-	int (*power2state)(struct thermal_cooling_device *, u32, long unsigned int *);
-};
-
 struct thermal_genl_cpu_caps {
 	int cpu;
 	int performance;
@@ -110601,8 +110900,6 @@ struct thermal_genl_cpu_caps {
 struct thermal_genl_notify {
 	int mcgrp;
 };
-
-struct thermal_trip;
 
 struct thermal_governor {
 	const char *name;
@@ -111653,7 +111950,14 @@ struct trace_event_data_offsets_alloc_vmap_area {};
 
 struct trace_event_data_offsets_amd_pstate_perf {};
 
-struct trace_event_data_offsets_arm_event {};
+struct trace_event_data_offsets_arm_event {
+	u32 pei_buf;
+	const void *pei_buf_ptr_;
+	u32 ctx_buf;
+	const void *ctx_buf_ptr_;
+	u32 oem_buf;
+	const void *oem_buf_ptr_;
+};
 
 struct trace_event_data_offsets_balance_dirty_pages {};
 
@@ -113014,6 +113318,22 @@ struct trace_event_data_offsets_tcp_send_reset {};
 
 struct trace_event_data_offsets_test_pages_isolated {};
 
+struct trace_event_data_offsets_thermal_power_actor {};
+
+struct trace_event_data_offsets_thermal_power_allocator {};
+
+struct trace_event_data_offsets_thermal_power_allocator_pid {};
+
+struct trace_event_data_offsets_thermal_power_devfreq_get_power {
+	u32 type;
+	const void *type_ptr_;
+};
+
+struct trace_event_data_offsets_thermal_power_devfreq_limit {
+	u32 type;
+	const void *type_ptr_;
+};
+
 struct trace_event_data_offsets_thermal_temperature {
 	u32 thermal_zone;
 	const void *thermal_zone_ptr_;
@@ -113308,6 +113628,14 @@ struct trace_event_raw_arm_event {
 	u32 running_state;
 	u32 psci_state;
 	u8 affinity;
+	u32 pei_len;
+	u32 __data_loc_pei_buf;
+	u32 ctx_len;
+	u32 __data_loc_ctx_buf;
+	u32 oem_len;
+	u32 __data_loc_oem_buf;
+	u8 sev;
+	int cpu;
 	char __data[0];
 };
 
@@ -117417,6 +117745,59 @@ struct trace_event_raw_test_pages_isolated {
 	long unsigned int start_pfn;
 	long unsigned int end_pfn;
 	long unsigned int fin_pfn;
+	char __data[0];
+};
+
+struct trace_event_raw_thermal_power_actor {
+	struct trace_entry ent;
+	int tz_id;
+	int actor_id;
+	u32 req_power;
+	u32 granted_power;
+	char __data[0];
+};
+
+struct trace_event_raw_thermal_power_allocator {
+	struct trace_entry ent;
+	int tz_id;
+	u32 total_req_power;
+	u32 total_granted_power;
+	size_t num_actors;
+	u32 power_range;
+	u32 max_allocatable_power;
+	int current_temp;
+	s32 delta_temp;
+	char __data[0];
+};
+
+struct trace_event_raw_thermal_power_allocator_pid {
+	struct trace_entry ent;
+	int tz_id;
+	s32 err;
+	s32 err_integral;
+	s64 p;
+	s64 i;
+	s64 d;
+	s32 output;
+	char __data[0];
+};
+
+struct trace_event_raw_thermal_power_devfreq_get_power {
+	struct trace_entry ent;
+	u32 __data_loc_type;
+	long unsigned int freq;
+	u32 busy_time;
+	u32 total_time;
+	u32 power;
+	char __data[0];
+};
+
+struct trace_event_raw_thermal_power_devfreq_limit {
+	struct trace_entry ent;
+	u32 __data_loc_type;
+	unsigned int freq;
+	long unsigned int cdev_state;
+	u32 power;
 	char __data[0];
 };
 
@@ -126189,7 +126570,7 @@ typedef void (*btf_trace_alloc_vmap_area)(void *, long unsigned int, long unsign
 
 typedef void (*btf_trace_amd_pstate_perf)(void *, long unsigned int, long unsigned int, long unsigned int, u64, u64, u64, u64, unsigned int, bool, bool);
 
-typedef void (*btf_trace_arm_event)(void *, const struct cper_sec_proc_arm *);
+typedef void (*btf_trace_arm_event)(void *, const struct cper_sec_proc_arm *, const u8 *, const u32, const u8 *, const u32, const u8 *, const u32, u8, int);
 
 typedef void (*btf_trace_attach_device_to_domain)(void *, struct device *);
 
@@ -127527,6 +127908,16 @@ typedef void (*btf_trace_thermal_apic_entry)(void *, int);
 
 typedef void (*btf_trace_thermal_apic_exit)(void *, int);
 
+typedef void (*btf_trace_thermal_power_actor)(void *, struct thermal_zone_device *, int, u32, u32);
+
+typedef void (*btf_trace_thermal_power_allocator)(void *, struct thermal_zone_device *, u32, u32, int, u32, u32, int, s32);
+
+typedef void (*btf_trace_thermal_power_allocator_pid)(void *, struct thermal_zone_device *, s32, s32, s64, s64, s64, s32);
+
+typedef void (*btf_trace_thermal_power_devfreq_get_power)(void *, struct thermal_cooling_device *, struct devfreq_dev_status *, long unsigned int, u32);
+
+typedef void (*btf_trace_thermal_power_devfreq_limit)(void *, struct thermal_cooling_device *, long unsigned int, long unsigned int, u32);
+
 typedef void (*btf_trace_thermal_temperature)(void *, struct thermal_zone_device *);
 
 typedef void (*btf_trace_thermal_zone_trip)(void *, struct thermal_zone_device *, int, enum thermal_trip_type);
@@ -128007,8 +128398,6 @@ struct bpf_iter;
 
 struct creds;
 
-struct fsverity_info;
-
 struct pctldev;
 
 
@@ -128064,6 +128453,7 @@ extern void *bpf_dynptr_slice_rdwr(const struct bpf_dynptr *p, u32 offset, void 
 extern int bpf_fentry_test1(int a) __weak __ksym;
 extern int bpf_get_dentry_xattr(struct dentry *dentry, const char *name__str, struct bpf_dynptr *value_p) __weak __ksym;
 extern int bpf_get_file_xattr(struct file *file, const char *name__str, struct bpf_dynptr *value_p) __weak __ksym;
+extern int bpf_get_fsverity_digest(struct file *file, struct bpf_dynptr *digest_p) __weak __ksym;
 extern struct file *bpf_get_task_exe_file(struct task_struct *task) __weak __ksym;
 extern void bpf_iter_bits_destroy(struct bpf_iter_bits *it) __weak __ksym;
 extern int bpf_iter_bits_new(struct bpf_iter_bits *it, const u64 *unsafe_ptr__ign, u32 nr_words) __weak __ksym;
