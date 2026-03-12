@@ -4,6 +4,7 @@ module R = Wg_nat.Reply.Packet
 module K = Wglib.Wgapi.Key
 
 (* TODO: *)
+(* - eBPF nat check when packet is being sent *)
 (* Create a peer config system  *)
 (* refactor fetching and setting peer endoint into one function  *)
 (* move a lot of the indiviaul args into config  *)
