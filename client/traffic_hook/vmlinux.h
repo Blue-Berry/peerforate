@@ -64147,6 +64147,8 @@ struct ftrace_graph_ret {
 struct ftrace_graph_ret_entry {
 	struct trace_entry ent;
 	struct ftrace_graph_ret ret;
+	long long unsigned int calltime;
+	long long unsigned int rettime;
 };
 
 struct fgraph_data {
@@ -105096,9 +105098,14 @@ struct severity {
 
 struct sfp;
 
-struct sfp_socket_ops;
+struct sfp_module_caps {
+	long unsigned int interfaces[1];
+	long unsigned int link_modes[2];
+	bool may_have_phy;
+	u8 port;
+};
 
-struct sfp_quirk;
+struct sfp_socket_ops;
 
 struct sfp_upstream_ops;
 
@@ -105109,12 +105116,12 @@ struct sfp_bus {
 	const struct sfp_socket_ops *socket_ops;
 	struct device *sfp_dev;
 	struct sfp *sfp;
-	const struct sfp_quirk *sfp_quirk;
 	const struct sfp_upstream_ops *upstream_ops;
 	void *upstream;
 	struct phy_device *phydev;
 	bool registered;
 	bool started;
+	struct sfp_module_caps caps;
 };
 
 struct sfp_eeprom_base {
@@ -105236,7 +105243,7 @@ struct sfp_eeprom_id {
 struct sfp_quirk {
 	const char *vendor;
 	const char *part;
-	void (*modes)(const struct sfp_eeprom_id *, long unsigned int *, long unsigned int *);
+	void (*support)(const struct sfp_eeprom_id *, struct sfp_module_caps *);
 	void (*fixup)(struct sfp *);
 };
 
